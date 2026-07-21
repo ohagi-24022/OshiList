@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "オシリス",
+    "slug": "oshilist",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "oshilist",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "JANコードを読み取り、グッズ登録を補助するためにカメラを使用します。"
+        }
+      ],
+      "expo-sqlite"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "JANコードを読み取り、グッズ登録を補助するためにカメラを使用します。"
+      }
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    }
+  }
+}
