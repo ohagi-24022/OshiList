@@ -35,11 +35,38 @@ async function persistPickerResult(result: ImagePicker.ImagePickerResult) {
   return persistPickedImage(result.assets[0].uri);
 }
 
-export async function pickGoodsImage() {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error('写真ライブラリの使用が許可されていません。');
+export async function requestPhotoLibraryPermission() {
+  let permission = await ImagePicker.getMediaLibraryPermissionsAsync();
+  if (permission.granted) return;
+
+  permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (permission.granted) return;
+
+  if (permission.canAskAgain) {
+    permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.granted) return;
   }
+
+  throw new Error('写真ライブラリの許可を確認してください。端末側で再表示できない場合は、設定アプリから写真へのアクセスを許可してください。');
+}
+
+export async function requestPhotoCameraPermission() {
+  let permission = await ImagePicker.getCameraPermissionsAsync();
+  if (permission.granted) return;
+
+  permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (permission.granted) return;
+
+  if (permission.canAskAgain) {
+    permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (permission.granted) return;
+  }
+
+  throw new Error('カメラの許可を確認してください。端末側で再表示できない場合は、設定アプリからカメラへのアクセスを許可してください。');
+}
+
+export async function pickGoodsImage() {
+  await requestPhotoLibraryPermission();
 
   const result = await ImagePicker.launchImageLibraryAsync({
     allowsEditing: true,
@@ -52,10 +79,7 @@ export async function pickGoodsImage() {
 }
 
 export async function takeGoodsPhoto() {
-  const permission = await ImagePicker.requestCameraPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error('カメラの使用が許可されていません。');
-  }
+  await requestPhotoCameraPermission();
 
   const result = await ImagePicker.launchCameraAsync({
     allowsEditing: true,

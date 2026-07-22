@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
+import { requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
 import { lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
@@ -84,6 +85,12 @@ export default function ScanScreen() {
   };
 
   const readReceiptImage = async (source: ReceiptSource) => {
+    if (source === 'camera') {
+      await requestPhotoCameraPermission();
+    } else {
+      await requestPhotoLibraryPermission();
+    }
+
     const permissionResult =
       source === 'camera'
         ? await ImagePicker.requestCameraPermissionsAsync()
