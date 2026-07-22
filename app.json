@@ -11,7 +11,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "JANコードを読み取り、グッズ登録を補助するためにカメラを使用します。"
+          "cameraPermission": "JANコードの読み取りや、グッズ画像の撮影にカメラを使用します。"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "グッズ画像として登録する写真を選択するために写真ライブラリを使用します。",
+          "cameraPermission": "グッズ画像として登録する写真を撮影するためにカメラを使用します。"
         }
       ],
       "expo-sqlite"
@@ -19,7 +26,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "JANコードを読み取り、グッズ登録を補助するためにカメラを使用します。"
+        "NSCameraUsageDescription": "JANコードの読み取りや、グッズ画像の撮影にカメラを使用します。",
+        "NSPhotoLibraryUsageDescription": "グッズ画像として登録する写真を選択するために写真ライブラリを使用します。"
       }
     },
     "android": {

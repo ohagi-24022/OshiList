@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { GoodsCard } from '../../src/components/GoodsCard';
+import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 
@@ -55,10 +55,16 @@ export default function HomeScreen() {
       </View>
 
       <FlatList
+        columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => <GoodsCard item={item} mode="view" />}
+        numColumns={2}
+        renderItem={({ item }) => (
+          <View style={styles.gridItem}>
+            <HomeGoodsTile item={item} />
+          </View>
+        )}
         ListEmptyComponent={
           <View style={[styles.empty, { borderColor: colors.border }]}>
             <Ionicons color={colors.muted} name="cube-outline" size={40} />
@@ -105,6 +111,8 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 15 },
   listContent: { padding: 18, paddingBottom: 96 },
+  gridItem: { flex: 1, maxWidth: '48.6%' },
+  gridRow: { gap: 10, marginBottom: 10 },
   empty: {
     alignItems: 'center',
     borderRadius: 8,

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppTheme } from '../store/ThemeContext';
 import { GoodsInput, GoodsStatus } from '../types';
+import { GoodsImageField } from './GoodsImageField';
 
 type Props = {
   initialJanCode?: string | null;
@@ -41,21 +42,25 @@ export function ManualGoodsForm({
   const save = async () => {
     if (disabled) return;
     setSaving(true);
-    await onSubmit({
-      janCode: initialJanCode ?? null,
-      boxName: boxName.trim(),
-      characterName: characterName.trim() || '未分類',
-      variantName: variantName.trim() || '通常版',
-      quantity: Math.max(0, Number(quantity) || 0),
-      imageUrl: imageUrl.trim() || null,
-      status,
-    });
-    setSaving(false);
-    setBoxName('');
-    setCharacterName('');
-    setVariantName('通常版');
-    setImageUrl('');
-    setQuantity('1');
+    try {
+      await onSubmit({
+        janCode: initialJanCode ?? null,
+        boxName: boxName.trim(),
+        characterName: characterName.trim() || '未分類',
+        variantName: variantName.trim() || '通常版',
+        quantity: Math.max(0, Number(quantity) || 0),
+        imageUrl: imageUrl.trim() || null,
+        status,
+      });
+      setBoxName('');
+      setCharacterName('');
+      setVariantName('通常版');
+      setImageUrl('');
+      setQuantity('1');
+      setStatus('owned');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -66,7 +71,7 @@ export function ManualGoodsForm({
       <TextInput
         value={boxName}
         onChangeText={setBoxName}
-        placeholder="例: スーパーかぐや姫！ トレーディング缶バッジ"
+        placeholder="例: トレーディング缶バッジ"
         placeholderTextColor={colors.muted}
         returnKeyType="next"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
@@ -76,12 +81,12 @@ export function ManualGoodsForm({
       <TextInput
         value={characterName}
         onChangeText={setCharacterName}
-        placeholder="未入力なら「未分類」で保存"
+        placeholder="空欄なら未分類"
         placeholderTextColor={colors.muted}
         returnKeyType="next"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
-      <Text style={[styles.helper, { color: colors.muted }]}>あとから編集する前提で、空のままでも登録できます。</Text>
+      <Text style={[styles.helper, { color: colors.muted }]}>あとから管理タブで編集できます。</Text>
 
       <Text style={[styles.label, { color: colors.muted }]}>バリエーション</Text>
       <TextInput
@@ -93,22 +98,8 @@ export function ManualGoodsForm({
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
-      <Text style={[styles.label, { color: colors.muted }]}>画像URL</Text>
-      <View style={styles.imageRow}>
-        <View style={[styles.preview, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
-          {imageUrl.trim() ? <Image source={{ uri: imageUrl.trim() }} style={styles.previewImage} /> : null}
-        </View>
-        <TextInput
-          value={imageUrl}
-          onChangeText={setImageUrl}
-          placeholder="https://..."
-          placeholderTextColor={colors.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="next"
-          style={[styles.imageInput, { backgroundColor: colors.input, color: colors.text }]}
-        />
-      </View>
+      <Text style={[styles.label, { color: colors.muted }]}>画像</Text>
+      <GoodsImageField value={imageUrl} onChange={setImageUrl} />
 
       <Text style={[styles.label, { color: colors.muted }]}>所持数</Text>
       <TextInput
@@ -161,22 +152,6 @@ const styles = StyleSheet.create({
   input: {
     borderRadius: 8,
     fontSize: 15,
-    minHeight: 44,
-    paddingHorizontal: 12,
-  },
-  imageRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  preview: {
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 58,
-    overflow: 'hidden',
-    width: 58,
-  },
-  previewImage: { height: '100%', width: '100%' },
-  imageInput: {
-    borderRadius: 8,
-    flex: 1,
-    fontSize: 14,
     minHeight: 44,
     paddingHorizontal: 12,
   },

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppTheme } from '../store/ThemeContext';
 import { Goods, GoodsInput, GoodsStatus } from '../types';
+import { GoodsImageField } from './GoodsImageField';
 
 type Props = {
   item: Goods;
@@ -96,21 +97,8 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
-      <Text style={[styles.label, { color: colors.muted }]}>画像URL</Text>
-      <View style={styles.imageRow}>
-        <View style={[styles.preview, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
-          {imageUrl.trim() ? <Image source={{ uri: imageUrl.trim() }} style={styles.previewImage} /> : null}
-        </View>
-        <TextInput
-          value={imageUrl}
-          onChangeText={setImageUrl}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="https://..."
-          placeholderTextColor={colors.muted}
-          style={[styles.imageInput, { backgroundColor: colors.input, color: colors.text }]}
-        />
-      </View>
+      <Text style={[styles.label, { color: colors.muted }]}>画像</Text>
+      <GoodsImageField value={imageUrl} onChange={setImageUrl} />
 
       <Text style={[styles.label, { color: colors.muted }]}>所持数</Text>
       <TextInput
@@ -165,22 +153,6 @@ const styles = StyleSheet.create({
   input: {
     borderRadius: 8,
     fontSize: 15,
-    minHeight: 46,
-    paddingHorizontal: 12,
-  },
-  imageRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  preview: {
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 58,
-    overflow: 'hidden',
-    width: 58,
-  },
-  previewImage: { height: '100%', width: '100%' },
-  imageInput: {
-    borderRadius: 8,
-    flex: 1,
-    fontSize: 14,
     minHeight: 46,
     paddingHorizontal: 12,
   },
