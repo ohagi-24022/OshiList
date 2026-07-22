@@ -1,6 +1,6 @@
 # OshiList Backend
 
-JANコードから商品名・画像URLを取得し、任意でAIによるラインナップ候補を返すFastAPIサーバーです。
+JANコードから商品名・画像URLを取得し、任意でGeminiによるラインナップ候補を返すFastAPIサーバーです。
 商品検索はYahoo!ショッピングを優先し、見つからない場合に楽天商品検索へフォールバックします。
 
 ## セットアップ
@@ -16,13 +16,14 @@ python -m pip install -r requirements.txt
 EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL=http://localhost:8000/lookup
 YAHOO_APP_ID=your_yahoo_client_id
 RAKUTEN_APP_ID=your_rakuten_application_id
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=your_openai_model
+RAKUTEN_ACCESS_KEY=your_rakuten_access_key
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
 ALLOWED_ORIGINS=*
 ```
 
 `YAHOO_APP_ID` と `RAKUTEN_APP_ID` は少なくともどちらか一方を設定してください。
-`OPENAI_API_KEY` と `OPENAI_MODEL` は任意です。未設定の場合、商品名と画像だけを返し、ラインナップ解析はスキップします。
+`GEMINI_API_KEY` は任意です。未設定の場合、商品名と画像だけを返し、ラインナップ解析はスキップします。
 
 ## 起動
 
@@ -31,12 +32,9 @@ cd backend
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## デプロイ先
+## Renderデプロイ
 
-OshiListではRenderへのデプロイを推奨します。
-RenderはFree Web ServiceでPython/FastAPIを動かせ、環境変数もダッシュボードから設定できます。
-
-Renderで新規Web Serviceを作成するときは、以下を指定してください。
+Renderでは `Web Service` を選びます。
 
 ```text
 Name:
@@ -76,11 +74,15 @@ https://oshilist-api.onrender.com/
 oshilist-api.onrender.com
 ```
 
-別のURLが発行された場合は、そのドメイン部分を `許可されたWebサイト` に入力してください。
-
-Vercel向けの `backend/vercel.json` も残していますが、環境変数設定が使いづらい場合はRenderを使ってください。
-
 ## API
+
+### `GET /`
+
+楽天/Yahoo申請に使えるOshiList紹介ページを返します。
+
+### `GET /privacy`
+
+申請に使える簡易プライバシーポリシーを返します。
 
 ### `GET /health`
 
@@ -88,7 +90,7 @@ Vercel向けの `backend/vercel.json` も残していますが、環境変数設
 
 ### `GET /lookup?jan=4900000000000`
 
-Yahoo!ショッピングAPI、楽天商品検索APIの順に商品名と画像URLを取得し、AI設定があればラインナップ候補も返します。
+Yahoo!ショッピングAPI、楽天商品検索APIの順に商品名と画像URLを取得し、Gemini設定があればラインナップ候補も返します。
 
 検索元を固定したい場合は `provider` を指定できます。
 
@@ -96,6 +98,12 @@ Yahoo!ショッピングAPI、楽天商品検索APIの順に商品名と画像UR
 GET /lookup?jan=4900000000000&provider=yahoo
 GET /lookup?jan=4900000000000&provider=rakuten
 GET /lookup?jan=4900000000000&provider=auto
+```
+
+AI解析をスキップしたい場合は `analyze=false` を指定します。
+
+```text
+GET /lookup?jan=4900000000000&analyze=false
 ```
 
 ### `POST /analyze-lineup`

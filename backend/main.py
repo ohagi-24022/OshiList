@@ -13,17 +13,17 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
 YAHOO_APP_ID = os.getenv("YAHOO_APP_ID")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL")
+RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
+RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
-RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
-OPENAI_CHAT_COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
 
-app = FastAPI(title="OshiList Product Lookup", version="0.2.0")
+app = FastAPI(title="OshiList Product Lookup", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +32,35 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+class LineupItem(BaseModel):
+    characterName: str = Field(..., min_length=1)
+    variantName: str = Field(default="通常版", min_length=1)
+
+
+class LookupResponse(BaseModel):
+    janCode: str
+    boxName: str
+    imageUrl: str | None = None
+    sourceLabel: str
+    lineup: list[LineupItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AnalyzeLineupRequest(BaseModel):
+    productName: str = Field(..., min_length=1)
+
+
+class AnalyzeLineupResponse(BaseModel):
+    lineup: list[LineupItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ProductCandidate(BaseModel):
+    boxName: str
+    imageUrl: str | None = None
+    sourceLabel: str
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -99,40 +128,11 @@ async def privacy_page() -> str:
           <h2>外部API</h2>
           <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini APIを利用する場合があります。</p>
           <h2>保存</h2>
-          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索の中継に利用します。</p>
+          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索とラインナップ解析の中継に利用します。</p>
         </main>
       </body>
     </html>
     """
-
-
-class LineupItem(BaseModel):
-    characterName: str = Field(..., min_length=1)
-    variantName: str = Field(default="通常版", min_length=1)
-
-
-class LookupResponse(BaseModel):
-    janCode: str
-    boxName: str
-    imageUrl: str | None = None
-    sourceLabel: str
-    lineup: list[LineupItem] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-
-
-class AnalyzeLineupRequest(BaseModel):
-    productName: str = Field(..., min_length=1)
-
-
-class AnalyzeLineupResponse(BaseModel):
-    lineup: list[LineupItem] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-
-
-class ProductCandidate(BaseModel):
-    boxName: str
-    imageUrl: str | None = None
-    sourceLabel: str
 
 
 def validate_jan(jan: str) -> str:
@@ -142,7 +142,7 @@ def validate_jan(jan: str) -> str:
     return normalized
 
 
-def first_image_url(item: dict[str, Any]) -> str | None:
+def first_rakuten_image_url(item: dict[str, Any]) -> str | None:
     image_sets = item.get("mediumImageUrls") or item.get("smallImageUrls") or []
     if not image_sets:
         return None
@@ -150,57 +150,23 @@ def first_image_url(item: dict[str, Any]) -> str | None:
     return image_url.replace("?_ex=128x128", "") if isinstance(image_url, str) else None
 
 
-async def search_rakuten_item(jan: str) -> tuple[str, str | None]:
-    if not RAKUTEN_APP_ID:
-        raise HTTPException(status_code=503, detail="RAKUTEN_APP_IDが未設定です。")
-
-    async with httpx.AsyncClient(timeout=12) as client:
-        response = await client.get(
-            RAKUTEN_ENDPOINT,
-            params={
-                "applicationId": RAKUTEN_APP_ID,
-                "keyword": jan,
-                "hits": 1,
-                "format": "json",
-            },
-        )
-
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="楽天商品検索APIへのリクエストに失敗しました。")
-
-    payload = response.json()
-    items = payload.get("Items") or []
-    if not items:
-        raise HTTPException(status_code=404, detail="このJANコードの商品は見つかりませんでした。")
-
-    item = items[0].get("Item", {})
-    product_name = item.get("itemName")
-    if not product_name:
-        raise HTTPException(status_code=404, detail="商品名を取得できませんでした。")
-
-    return product_name, first_image_url(item)
-
-
 async def search_yahoo_item(jan: str) -> ProductCandidate:
     if not YAHOO_APP_ID:
         raise HTTPException(status_code=503, detail="YAHOO_APP_IDが未設定です。")
 
-    async with httpx.AsyncClient(timeout=12) as client:
-        response = await client.get(
-            YAHOO_ENDPOINT,
-            params={
-                "appid": YAHOO_APP_ID,
-                "jan_code": jan,
-                "image_size": 600,
-                "results": 1,
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(
+                YAHOO_ENDPOINT,
+                params={"appid": YAHOO_APP_ID, "jan_code": jan, "image_size": 600, "results": 1},
+            )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Yahoo!ショッピングAPIへ接続できませんでした。")
 
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail="Yahoo!ショッピングAPIへのリクエストに失敗しました。")
 
-    payload = response.json()
-    hits = payload.get("hits") or []
+    hits = response.json().get("hits") or []
     if not hits:
         raise HTTPException(status_code=404, detail="Yahoo!ショッピングで商品が見つかりませんでした。")
 
@@ -214,6 +180,35 @@ async def search_yahoo_item(jan: str) -> ProductCandidate:
     return ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="Yahoo!ショッピング")
 
 
+async def search_rakuten_item(jan: str) -> ProductCandidate:
+    if not RAKUTEN_APP_ID:
+        raise HTTPException(status_code=503, detail="RAKUTEN_APP_IDが未設定です。")
+
+    params = {"applicationId": RAKUTEN_APP_ID, "keyword": jan, "hits": 1, "format": "json"}
+    if RAKUTEN_ACCESS_KEY:
+        params["accessKey"] = RAKUTEN_ACCESS_KEY
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(RAKUTEN_ENDPOINT, params=params)
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="楽天商品検索APIへ接続できませんでした。")
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="楽天商品検索APIへのリクエストに失敗しました。")
+
+    items = response.json().get("Items") or []
+    if not items:
+        raise HTTPException(status_code=404, detail="楽天市場で商品が見つかりませんでした。")
+
+    item = items[0].get("Item", {})
+    product_name = item.get("itemName")
+    if not product_name:
+        raise HTTPException(status_code=404, detail="楽天市場で商品名を取得できませんでした。")
+
+    return ProductCandidate(boxName=product_name, imageUrl=first_rakuten_image_url(item), sourceLabel="楽天商品検索")
+
+
 async def search_product(jan: str, provider: str) -> tuple[ProductCandidate, list[str]]:
     provider_order = ["yahoo", "rakuten"] if provider == "auto" else [provider]
     warnings: list[str] = []
@@ -223,13 +218,12 @@ async def search_product(jan: str, provider: str) -> tuple[ProductCandidate, lis
             if current_provider == "yahoo":
                 return await search_yahoo_item(jan), warnings
             if current_provider == "rakuten":
-                product_name, image_url = await search_rakuten_item(jan)
-                return ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="楽天商品検索"), warnings
+                return await search_rakuten_item(jan), warnings
             warnings.append(f"未対応の検索プロバイダです: {current_provider}")
         except HTTPException as exc:
             warnings.append(f"{current_provider}: {exc.detail}")
 
-    if all("未設定" in warning for warning in warnings):
+    if warnings and all("未設定" in warning for warning in warnings):
         raise HTTPException(status_code=503, detail="YAHOO_APP_IDまたはRAKUTEN_APP_IDを設定してください。")
 
     raise HTTPException(
@@ -238,63 +232,87 @@ async def search_product(jan: str, provider: str) -> tuple[ProductCandidate, lis
     )
 
 
-def parse_lineup_json(text: str) -> list[LineupItem]:
-    start = text.find("[")
-    end = text.rfind("]")
-    if start < 0 or end < start:
-        return []
-
-    try:
-        raw_items = json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
+def parse_lineup_items(raw_items: Any) -> list[LineupItem]:
+    if not isinstance(raw_items, list):
         return []
 
     lineup: list[LineupItem] = []
+    seen: set[tuple[str, str]] = set()
     for item in raw_items:
         if not isinstance(item, dict):
             continue
         character_name = str(item.get("characterName") or item.get("character_name") or "").strip()
-        variant_name = str(item.get("variantName") or item.get("variant_name") or "通常版").strip()
-        if character_name:
-            lineup.append(LineupItem(characterName=character_name, variantName=variant_name or "通常版"))
+        variant_name = str(item.get("variantName") or item.get("variant_name") or "通常版").strip() or "通常版"
+        key = (character_name, variant_name)
+        if character_name and key not in seen:
+            seen.add(key)
+            lineup.append(LineupItem(characterName=character_name, variantName=variant_name))
     return lineup
 
 
-async def analyze_lineup_with_ai(product_name: str) -> AnalyzeLineupResponse:
-    warnings: list[str] = []
-    if not OPENAI_API_KEY or not OPENAI_MODEL:
-        return AnalyzeLineupResponse(
-            warnings=["OPENAI_API_KEYまたはOPENAI_MODELが未設定のため、ラインナップ解析はスキップしました。"]
-        )
+def parse_gemini_lineup(payload: dict[str, Any]) -> list[LineupItem]:
+    parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("[")
+        end = text.rfind("]")
+        if start < 0 or end < start:
+            return []
+        try:
+            parsed = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return []
+    return parse_lineup_items(parsed)
 
+
+async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse:
+    if not GEMINI_API_KEY:
+        return AnalyzeLineupResponse(warnings=["GEMINI_API_KEYが未設定のため、ラインナップ解析はスキップしました。"])
+
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     prompt = (
         "商品名からトレーディンググッズの中身候補を推定してください。"
         "実在確認できない候補を水増しせず、不明なら空配列を返してください。"
-        "JSON配列のみを返してください。形式: "
-        '[{"characterName":"キャラクター名","variantName":"通常版"}]'
+        "キャラクター名と仕様名だけを抽出してください。"
     )
-
-    async with httpx.AsyncClient(timeout=25) as client:
-        response = await client.post(
-            OPENAI_CHAT_COMPLETIONS_ENDPOINT,
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": OPENAI_MODEL,
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": product_name},
-                ],
-                "temperature": 0.1,
+    schema = {
+        "type": "ARRAY",
+        "items": {
+            "type": "OBJECT",
+            "properties": {
+                "characterName": {"type": "STRING"},
+                "variantName": {"type": "STRING"},
             },
-        )
+            "required": ["characterName", "variantName"],
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            response = await client.post(
+                endpoint,
+                params={"key": GEMINI_API_KEY},
+                json={
+                    "contents": [{"role": "user", "parts": [{"text": f"{prompt}\n\n商品名: {product_name}"}]}],
+                    "generationConfig": {
+                        "temperature": 0.1,
+                        "responseMimeType": "application/json",
+                        "responseSchema": schema,
+                    },
+                },
+            )
+    except httpx.RequestError:
+        return AnalyzeLineupResponse(warnings=["Gemini APIへ接続できなかったため、ラインナップ解析はスキップしました。"])
 
     if response.status_code != 200:
-        return AnalyzeLineupResponse(warnings=["AI APIでラインナップ解析に失敗しました。"])
+        return AnalyzeLineupResponse(warnings=["Gemini APIでラインナップ解析に失敗しました。"])
 
-    content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    lineup = parse_lineup_json(content)
-    if not lineup:
-        warnings.append("AIから有効なラインナップ候補を取得できませんでした。")
+    lineup = parse_gemini_lineup(response.json())
+    warnings = [] if lineup else ["Geminiから有効なラインナップ候補を取得できませんでした。"]
     return AnalyzeLineupResponse(lineup=lineup, warnings=warnings)
 
 
@@ -304,7 +322,9 @@ async def health() -> dict[str, Any]:
         "ok": True,
         "yahooConfigured": bool(YAHOO_APP_ID),
         "rakutenConfigured": bool(RAKUTEN_APP_ID),
-        "aiConfigured": bool(OPENAI_API_KEY and OPENAI_MODEL),
+        "rakutenAccessKeyConfigured": bool(RAKUTEN_ACCESS_KEY),
+        "geminiConfigured": bool(GEMINI_API_KEY),
+        "geminiModel": GEMINI_MODEL,
     }
 
 
@@ -316,7 +336,7 @@ async def lookup(
 ) -> LookupResponse:
     normalized_jan = validate_jan(jan)
     product, search_warnings = await search_product(normalized_jan, provider)
-    ai_result = await analyze_lineup_with_ai(product.boxName) if analyze else AnalyzeLineupResponse()
+    ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
 
     return LookupResponse(
         janCode=normalized_jan,
@@ -330,4 +350,4 @@ async def lookup(
 
 @app.post("/analyze-lineup", response_model=AnalyzeLineupResponse)
 async def analyze_lineup(request: AnalyzeLineupRequest) -> AnalyzeLineupResponse:
-    return await analyze_lineup_with_ai(request.productName)
+    return await analyze_lineup_with_gemini(request.productName)

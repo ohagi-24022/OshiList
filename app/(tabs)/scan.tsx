@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,25 +19,42 @@ export default function ScanScreen() {
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProductLookupResult | null>(null);
+  const scanLockRef = useRef(false);
+  const lastScannedJanRef = useRef<string | null>(null);
+
+  const resetScanLock = () => {
+    scanLockRef.current = false;
+    lastScannedJanRef.current = null;
+    setScanning(true);
+  };
 
   const resolveJan = async (janCode: string) => {
-    if (!janCode.trim() || loading) return;
+    const normalizedJan = janCode.trim();
+    if (!normalizedJan || scanLockRef.current) return;
+
+    scanLockRef.current = true;
+    lastScannedJanRef.current = normalizedJan;
     setScanning(false);
     setLoading(true);
     try {
-      const product = await lookupProductByJan(janCode);
+      const product = await lookupProductByJan(normalizedJan);
       setManualJan(product.janCode);
       setResult(product);
     } catch (error) {
       Alert.alert(
         '手動登録に切り替えます',
         error instanceof Error ? error.message : '商品情報を取得できませんでした。',
+        [{ text: 'OK', onPress: resetScanLock }],
       );
-      setManualJan(janCode.trim());
+      setManualJan(normalizedJan);
     } finally {
       setLoading(false);
-      setTimeout(() => setScanning(true), 1200);
     }
+  };
+
+  const closeResult = () => {
+    setResult(null);
+    resetScanLock();
   };
 
   const cameraReady = Platform.OS !== 'web' && permission?.granted;
@@ -93,12 +110,9 @@ export default function ScanScreen() {
             <Ionicons color={colors.text} name={torch ? 'flash' : 'flash-outline'} size={18} />
             <Text style={[styles.actionText, { color: colors.text }]}>ライト</Text>
           </Pressable>
-          <Pressable
-            onPress={() => setManualJan('')}
-            style={[styles.actionButton, { borderColor: colors.border, backgroundColor: colors.surface }]}
-          >
-            <Ionicons color={colors.text} name="create-outline" size={18} />
-            <Text style={[styles.actionText, { color: colors.text }]}>手動登録</Text>
+          <Pressable onPress={resetScanLock} style={[styles.actionButton, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            <Ionicons color={colors.text} name="scan-outline" size={18} />
+            <Text style={[styles.actionText, { color: colors.text }]}>再スキャン</Text>
           </Pressable>
         </View>
 
@@ -115,15 +129,18 @@ export default function ScanScreen() {
             />
             <Pressable
               disabled={loading}
-              onPress={() => resolveJan(manualJan)}
+              onPress={() => {
+                resetScanLock();
+                setTimeout(() => resolveJan(manualJan), 0);
+              }}
               style={[styles.lookupButton, { backgroundColor: loading ? colors.border : colors.primary }]}
             >
               <Ionicons color="#ffffff" name="search" size={18} />
             </Pressable>
           </View>
-          <Text style={[styles.helper, { color: colors.muted }]}>
-            実商品を取得するには `EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL` にバックエンドURLを設定してください。
-          </Text>
+          {!!lastScannedJanRef.current && (
+            <Text style={[styles.helper, { color: colors.muted }]}>処理中のJAN: {lastScannedJanRef.current}</Text>
+          )}
         </View>
 
         <View>
@@ -132,7 +149,7 @@ export default function ScanScreen() {
         </View>
       </ScrollView>
 
-      <Modal animationType="slide" transparent visible={!!result} onRequestClose={() => setResult(null)}>
+      <Modal animationType="slide" transparent visible={!!result} onRequestClose={closeResult}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
             <View style={styles.sheetHeader}>
@@ -142,7 +159,7 @@ export default function ScanScreen() {
                   {result?.sourceLabel} / JAN: {result?.janCode}
                 </Text>
               </View>
-              <Pressable onPress={() => setResult(null)} style={styles.closeButton}>
+              <Pressable onPress={closeResult} style={styles.closeButton}>
                 <Ionicons color={colors.text} name="close" size={22} />
               </Pressable>
             </View>
@@ -187,7 +204,7 @@ export default function ScanScreen() {
                         variantName: candidate.variantName,
                         imageUrl: result.imageUrl,
                       });
-                      setResult(null);
+                      closeResult();
                     }}
                     style={[styles.candidate, { borderColor: colors.border }]}
                   >
@@ -206,7 +223,7 @@ export default function ScanScreen() {
                     initialImageUrl={result.imageUrl}
                     onSubmit={async (input) => {
                       await addGoods(input);
-                      setResult(null);
+                      closeResult();
                     }}
                   />
                 )
