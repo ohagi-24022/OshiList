@@ -7,17 +7,36 @@ import { CounterButton } from './CounterButton';
 
 type Props = {
   item: Goods;
-  onDecrease: () => void;
-  onIncrease: () => void;
-  onRemove: () => void;
+  mode?: 'view' | 'manage';
+  onDecrease?: () => void;
+  onIncrease?: () => void;
+  onPress?: () => void;
+  onRemove?: () => void;
 };
 
-export function GoodsCard({ item, onDecrease, onIncrease, onRemove }: Props) {
+const statusLabels: Record<Goods['status'], string> = {
+  owned: '所持',
+  reserved: '予約済み',
+  wanted: '欲しい',
+};
+
+export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPress, onRemove }: Props) {
   const { colors } = useAppTheme();
-  const badgeLabel = item.status === 'reserved' ? '予約済み' : item.status === 'wanted' ? '欲しい' : '所持';
+  const isManage = mode === 'manage';
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+          opacity: pressed ? 0.75 : 1,
+        },
+      ]}
+    >
       <View style={[styles.cover, { backgroundColor: colors.elevated }]}>
         {item.imageUrl ? (
           <Image source={{ uri: item.imageUrl }} style={styles.image} />
@@ -30,9 +49,18 @@ export function GoodsCard({ item, onDecrease, onIncrease, onRemove }: Props) {
           <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
             {item.boxName}
           </Text>
-          <Pressable accessibilityLabel="グッズを削除" onPress={onRemove} style={styles.removeButton}>
-            <Ionicons color={colors.muted} name="trash-outline" size={17} />
-          </Pressable>
+          {isManage && onRemove ? (
+            <Pressable
+              accessibilityLabel="グッズを削除"
+              onPress={(event) => {
+                event.stopPropagation();
+                onRemove();
+              }}
+              style={styles.removeButton}
+            >
+              <Ionicons color={colors.muted} name="trash-outline" size={17} />
+            </Pressable>
+          ) : null}
         </View>
         <Text numberOfLines={1} style={[styles.character, { color: colors.text }]}>
           {item.characterName}
@@ -43,12 +71,18 @@ export function GoodsCard({ item, onDecrease, onIncrease, onRemove }: Props) {
         <View style={styles.footer}>
           <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
             <View style={[styles.dot, { backgroundColor: colors.secondary }]} />
-            <Text style={[styles.statusText, { color: colors.muted }]}>{badgeLabel}</Text>
+            <Text style={[styles.statusText, { color: colors.muted }]}>{statusLabels[item.status]}</Text>
           </View>
-          <CounterButton quantity={item.quantity} onDecrease={onDecrease} onIncrease={onIncrease} />
+          {isManage && onDecrease && onIncrease ? (
+            <CounterButton quantity={item.quantity} onDecrease={onDecrease} onIncrease={onIncrease} />
+          ) : (
+            <View style={[styles.quantityBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.quantityText}>{item.quantity}点</Text>
+            </View>
+          )}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -88,4 +122,13 @@ const styles = StyleSheet.create({
   },
   dot: { borderRadius: 999, height: 7, width: 7 },
   statusText: { fontSize: 11, fontWeight: '700' },
+  quantityBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 30,
+    justifyContent: 'center',
+    minWidth: 52,
+    paddingHorizontal: 12,
+  },
+  quantityText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
 });

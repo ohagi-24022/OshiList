@@ -1,36 +1,28 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
-import { GoodsStatus } from '../../src/types';
-
-const filters: Array<[GoodsStatus | 'all', string]> = [
-  ['all', 'すべて'],
-  ['owned', '所持'],
-  ['reserved', '予約済み'],
-  ['wanted', '欲しい'],
-];
 
 export default function HomeScreen() {
   const { colors } = useAppTheme();
-  const { goods, loading, updateQuantity, removeGoods } = useGoods();
+  const { goods, loading } = useGoods();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<GoodsStatus | 'all'>('all');
+
+  const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return goods.filter((item) => {
-      const matchesFilter = filter === 'all' || item.status === filter;
+    return ownedGoods.filter((item) => {
       const target = [item.boxName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
-      return matchesFilter && (!normalized || target.toLowerCase().includes(normalized));
+      return !normalized || target.toLowerCase().includes(normalized);
     });
-  }, [filter, goods, query]);
+  }, [ownedGoods, query]);
 
-  const totalQuantity = goods.reduce((sum, item) => sum + item.quantity, 0);
+  const totalQuantity = ownedGoods.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -39,12 +31,12 @@ export default function HomeScreen() {
           <View>
             <Text style={[styles.title, { color: colors.text }]}>OshiList</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : `${goods.length}種類 / ${totalQuantity}点`}
+              {loading ? '読み込み中' : `所持中 ${ownedGoods.length}種類 / ${totalQuantity}点`}
             </Text>
           </View>
           <View style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <Ionicons color={colors.primary} name="sparkles" size={18} />
-            <Text style={[styles.summaryText, { color: colors.text }]}>重複防止</Text>
+            <Ionicons color={colors.primary} name="albums-outline" size={18} />
+            <Text style={[styles.summaryText, { color: colors.text }]}>コレクション</Text>
           </View>
         </View>
         <View style={styles.searchRow}>
@@ -60,48 +52,19 @@ export default function HomeScreen() {
             />
           </View>
         </View>
-        <View style={styles.filterRow}>
-          {filters.map(([value, label]) => (
-            <Pressable
-              key={value}
-              onPress={() => setFilter(value)}
-              style={[
-                styles.filter,
-                { borderColor: colors.border, backgroundColor: colors.surface },
-                filter === value && { backgroundColor: colors.text, borderColor: colors.text },
-              ]}
-            >
-              <Text style={[styles.filterText, { color: filter === value ? colors.background : colors.text }]}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
       </View>
 
       <FlatList
         contentContainerStyle={styles.listContent}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <GoodsCard
-            item={item}
-            onDecrease={() => updateQuantity(item.id, -1)}
-            onIncrease={() => updateQuantity(item.id, 1)}
-            onRemove={() =>
-              Alert.alert('削除しますか？', `${item.characterName} / ${item.variantName}`, [
-                { text: 'キャンセル', style: 'cancel' },
-                { text: '削除', style: 'destructive', onPress: () => removeGoods(item.id) },
-              ])
-            }
-          />
-        )}
+        renderItem={({ item }) => <GoodsCard item={item} mode="view" />}
         ListEmptyComponent={
           <View style={[styles.empty, { borderColor: colors.border }]}>
             <Ionicons color={colors.muted} name="cube-outline" size={40} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>まだ登録がありません</Text>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>所持中のグッズがありません</Text>
             <Text style={[styles.emptyText, { color: colors.muted }]}>
-              スキャンまたは手動登録から、最初の推しグッズを追加できます。
+              追加や編集は管理タブから行えます。ホームには所持しているグッズだけが表示されます。
             </Text>
           </View>
         }
@@ -141,16 +104,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   searchInput: { flex: 1, fontSize: 15 },
-  filterRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  filter: {
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 34,
-    justifyContent: 'center',
-    paddingHorizontal: 11,
-  },
-  filterText: { fontSize: 12, fontWeight: '800' },
   listContent: { padding: 18, paddingBottom: 96 },
   empty: {
     alignItems: 'center',

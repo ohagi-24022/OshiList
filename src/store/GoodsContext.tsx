@@ -7,6 +7,7 @@ type GoodsContextValue = {
   goods: Goods[];
   loading: boolean;
   addGoods: (input: GoodsInput) => Promise<void>;
+  updateGoods: (id: number, input: GoodsInput) => Promise<void>;
   updateQuantity: (id: number, delta: number) => Promise<void>;
   removeGoods: (id: number) => Promise<void>;
   refresh: () => Promise<void>;
@@ -99,6 +100,33 @@ export function GoodsProvider({ children }: PropsWithChildren) {
     [refresh],
   );
 
+  const updateGoods = useCallback(
+    async (id: number, input: GoodsInput) => {
+      await db.runAsync(
+        `UPDATE goods
+         SET jan_code = ?,
+             box_name = ?,
+             character_name = ?,
+             variant_name = ?,
+             quantity = ?,
+             image_url = ?,
+             status = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        input.janCode ?? null,
+        input.boxName.trim(),
+        input.characterName.trim() || '未分類',
+        input.variantName.trim() || '通常版',
+        Math.max(0, input.quantity ?? 0),
+        input.imageUrl ?? null,
+        input.status ?? 'owned',
+        id,
+      );
+      await refresh();
+    },
+    [refresh],
+  );
+
   const removeGoods = useCallback(
     async (id: number) => {
       await db.runAsync('DELETE FROM goods WHERE id = ?', id);
@@ -108,8 +136,8 @@ export function GoodsProvider({ children }: PropsWithChildren) {
   );
 
   const value = useMemo(
-    () => ({ goods, loading, addGoods, updateQuantity, removeGoods, refresh }),
-    [addGoods, goods, loading, refresh, removeGoods, updateQuantity],
+    () => ({ goods, loading, addGoods, updateGoods, updateQuantity, removeGoods, refresh }),
+    [addGoods, goods, loading, refresh, removeGoods, updateGoods, updateQuantity],
   );
 
   return <GoodsContext.Provider value={value}>{children}</GoodsContext.Provider>;

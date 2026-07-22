@@ -30,6 +30,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="manage"
+        options={{
+          title: '管理',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="create-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="scan"
         options={{
           title: 'スキャン',
