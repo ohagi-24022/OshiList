@@ -24,7 +24,7 @@ export type GoodsInput = {
 };
 
 export type ProductLookupResult = {
-  janCode: string;
+  janCode: string | null;
   boxName: string;
   imageUrl: string | null;
   sourceLabel: string;
@@ -33,4 +33,22 @@ export type ProductLookupResult = {
     characterName: string;
     variantName: string;
   }>;
+};
+
+export type ProductSearchCandidate = {
+  boxName: string;
+  imageUrl: string | null;
+  sourceLabel: string;
+};
+
+export type ReceiptItemCandidate = {
+  rawText: string;
+  normalizedQuery: string;
+  confidence: number;
+  candidates: ProductSearchCandidate[];
+};
+
+export type ReceiptParseResult = {
+  items: ReceiptItemCandidate[];
+  warnings?: string[];
 };
