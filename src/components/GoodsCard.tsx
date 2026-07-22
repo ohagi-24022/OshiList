@@ -1,6 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { isOshiGoods } from '../lib/oshi';
+import { useProfile } from '../store/ProfileContext';
 import { useAppTheme } from '../store/ThemeContext';
 import { Goods } from '../types';
 import { CounterButton } from './CounterButton';
@@ -22,7 +24,9 @@ const statusLabels: Record<Goods['status'], string> = {
 
 export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPress, onRemove }: Props) {
   const { colors } = useAppTheme();
+  const { profile } = useProfile();
   const isManage = mode === 'manage';
+  const markedAsOshi = isOshiGoods(item, profile);
 
   return (
     <Pressable
@@ -32,7 +36,7 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         styles.card,
         {
           backgroundColor: colors.surface,
-          borderColor: colors.border,
+          borderColor: markedAsOshi ? colors.primary : colors.border,
           opacity: pressed ? 0.75 : 1,
         },
       ]}
@@ -43,6 +47,11 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         ) : (
           <Ionicons color={colors.muted} name="image-outline" size={34} />
         )}
+        {markedAsOshi ? (
+          <View style={[styles.coverBadge, { backgroundColor: colors.primary }]}>
+            <Ionicons color="#ffffff" name="heart" size={13} />
+          </View>
+        ) : null}
       </View>
       <View style={styles.body}>
         <View style={styles.titleRow}>
@@ -62,9 +71,20 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
             </Pressable>
           ) : null}
         </View>
-        <Text numberOfLines={1} style={[styles.character, { color: colors.text }]}>
-          {item.characterName}
+        <Text numberOfLines={1} style={[styles.series, { color: colors.muted }]}>
+          {item.seriesName}
         </Text>
+        <View style={styles.characterRow}>
+          <Text numberOfLines={1} style={[styles.character, { color: markedAsOshi ? colors.primary : colors.text }]}>
+            {item.characterName}
+          </Text>
+          {markedAsOshi ? (
+            <View style={[styles.oshiBadge, { backgroundColor: colors.primary }]}>
+              <Ionicons color="#ffffff" name="heart" size={12} />
+              <Text style={styles.oshiText}>推し</Text>
+            </View>
+          ) : null}
+        </View>
         <Text numberOfLines={1} style={[styles.variant, { color: colors.muted }]}>
           {item.variantName}
         </Text>
@@ -101,14 +121,36 @@ const styles = StyleSheet.create({
     height: 112,
     justifyContent: 'center',
     overflow: 'hidden',
+    position: 'relative',
     width: 82,
+  },
+  coverBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 26,
+    justifyContent: 'center',
+    left: 6,
+    position: 'absolute',
+    top: 6,
+    width: 26,
   },
   image: { height: '100%', width: '100%' },
   body: { flex: 1, minWidth: 0 },
   titleRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8 },
   title: { flex: 1, fontSize: 15, fontWeight: '800', lineHeight: 20 },
   removeButton: { alignItems: 'center', height: 28, justifyContent: 'center', width: 28 },
-  character: { fontSize: 14, fontWeight: '700', marginTop: 8 },
+  series: { fontSize: 11, fontWeight: '800', marginTop: 6 },
+  characterRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 5 },
+  character: { flexShrink: 1, fontSize: 14, fontWeight: '800' },
+  oshiBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 4,
+    height: 24,
+    paddingHorizontal: 8,
+  },
+  oshiText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   variant: { fontSize: 12, marginTop: 3 },
   footer: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
   status: {
