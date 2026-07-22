@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -288,7 +288,12 @@ export default function ScanScreen() {
 
 function ProductResultModal({ result, onClose }: { result: ProductLookupResult | null; onClose: () => void }) {
   const { colors } = useAppTheme();
-  const { addGoods } = useGoods();
+  const { addGoods, goods } = useGoods();
+  const [seriesName, setSeriesName] = useState('');
+  const seriesSuggestions = useMemo(
+    () => Array.from(new Set(goods.map((item) => item.seriesName).filter(Boolean))).slice(0, 10),
+    [goods],
+  );
 
   return (
     <Modal animationType="slide" transparent visible={!!result} onRequestClose={onClose}>
@@ -310,6 +315,31 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
           {!!result && (
             <>
               <ProductPreview result={result} />
+              <View style={styles.seriesPicker}>
+                <Text style={[styles.seriesPickerLabel, { color: colors.muted }]}>シリーズ</Text>
+                <TextInput
+                  value={seriesName}
+                  onChangeText={setSeriesName}
+                  placeholder="シリーズ未設定"
+                  placeholderTextColor={colors.muted}
+                  style={[styles.seriesInput, { backgroundColor: colors.input, color: colors.text }]}
+                />
+                {!!seriesSuggestions.length && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seriesChips}>
+                    {seriesSuggestions.map((value) => (
+                      <Pressable
+                        key={value}
+                        onPress={() => setSeriesName(value)}
+                        style={[styles.seriesChip, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+                      >
+                        <Text numberOfLines={1} style={[styles.seriesChipText, { color: colors.text }]}>
+                          {value}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
               <ScrollView keyboardShouldPersistTaps="handled" style={styles.candidateList}>
                 {result.lineup.length > 0 ? (
                   result.lineup.map((candidate) => (
@@ -319,6 +349,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                         await addGoods({
                           janCode: result.janCode,
                           boxName: result.boxName,
+                          seriesName: seriesName.trim() || 'シリーズ未設定',
                           characterName: candidate.characterName,
                           variantName: candidate.variantName,
                           imageUrl: result.imageUrl,
@@ -338,6 +369,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                   <ManualGoodsForm
                     initialJanCode={result.janCode}
                     initialBoxName={result.boxName}
+                    initialSeriesName={seriesName}
                     initialImageUrl={result.imageUrl}
                     onSubmit={async (input) => {
                       await addGoods(input);
@@ -577,6 +609,25 @@ const styles = StyleSheet.create({
   productText: { flex: 1, justifyContent: 'center' },
   productName: { fontSize: 15, fontWeight: '900', lineHeight: 20 },
   productMeta: { fontSize: 12, marginTop: 5 },
+  seriesPicker: { marginTop: 12 },
+  seriesPickerLabel: { fontSize: 12, fontWeight: '800', marginBottom: 7 },
+  seriesInput: {
+    borderRadius: 8,
+    fontSize: 15,
+    height: 44,
+    paddingHorizontal: 12,
+  },
+  seriesChips: { gap: 8, paddingTop: 8 },
+  seriesChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    maxWidth: 180,
+    paddingHorizontal: 12,
+  },
+  seriesChipText: { fontSize: 12, fontWeight: '800' },
   warningBox: { borderRadius: 8, borderWidth: 1, gap: 4, marginTop: 10, padding: 10 },
   warningText: { fontSize: 11, lineHeight: 16 },
   candidateList: { marginTop: 14 },

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { GoodsProvider } from '../src/store/GoodsContext';
 import { ProfileProvider } from '../src/store/ProfileContext';
+import { RegistrationPresetProvider } from '../src/store/RegistrationPresetContext';
 import { ThemeProvider, useAppTheme } from '../src/store/ThemeContext';
 
 function RootStack() {
@@ -20,9 +21,11 @@ export default function Layout() {
   return (
     <ThemeProvider>
       <ProfileProvider>
-        <GoodsProvider>
-          <RootStack />
-        </GoodsProvider>
+        <RegistrationPresetProvider>
+          <GoodsProvider>
+            <RootStack />
+          </GoodsProvider>
+        </RegistrationPresetProvider>
       </ProfileProvider>
     </ThemeProvider>
   );
