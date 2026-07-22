@@ -1,28 +1,54 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 
+type GroupMode = 'all' | 'character' | 'series';
+
+const groupModes: Array<[GroupMode, string, keyof typeof Ionicons.glyphMap]> = [
+  ['all', '全体', 'albums-outline'],
+  ['character', 'キャラ', 'person-outline'],
+  ['series', 'シリーズ', 'layers-outline'],
+];
+
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
 export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { goods, loading } = useGoods();
   const [query, setQuery] = useState('');
+  const [groupMode, setGroupMode] = useState<GroupMode>('all');
+  const [selectedGroup, setSelectedGroup] = useState<string>('all');
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
+  const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
+  const seriesGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.seriesName || 'シリーズ未設定')), [ownedGoods]);
+  const activeGroups = groupMode === 'character' ? characterGroups : groupMode === 'series' ? seriesGroups : [];
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return ownedGoods.filter((item) => {
-      const target = [item.boxName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
-      return !normalized || target.toLowerCase().includes(normalized);
+      const matchesGroup =
+        groupMode === 'all' ||
+        selectedGroup === 'all' ||
+        (groupMode === 'character' ? item.characterName === selectedGroup : item.seriesName === selectedGroup);
+      const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
+      return matchesGroup && (!normalized || target.toLowerCase().includes(normalized));
     });
-  }, [ownedGoods, query]);
+  }, [groupMode, ownedGoods, query, selectedGroup]);
 
-  const totalQuantity = ownedGoods.reduce((sum, item) => sum + item.quantity, 0);
+  const totalQuantity = filtered.reduce((sum, item) => sum + item.quantity, 0);
+
+  const switchGroupMode = (nextMode: GroupMode) => {
+    setGroupMode(nextMode);
+    setSelectedGroup('all');
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -31,7 +57,7 @@ export default function HomeScreen() {
           <View>
             <Text style={[styles.title, { color: colors.text }]}>OshiList</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : `所持中 ${ownedGoods.length}種類 / ${totalQuantity}点`}
+              {loading ? '読み込み中' : `${filtered.length}種類 / ${totalQuantity}個`}
             </Text>
           </View>
           <View style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -39,19 +65,68 @@ export default function HomeScreen() {
             <Text style={[styles.summaryText, { color: colors.text }]}>コレクション</Text>
           </View>
         </View>
+
         <View style={styles.searchRow}>
           <View style={[styles.searchBox, { backgroundColor: colors.input }]}>
             <Ionicons color={colors.muted} name="search" size={18} />
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="作品・キャラ・仕様で検索"
+              placeholder="シリーズ・キャラ・仕様で検索"
               placeholderTextColor={colors.muted}
               autoCorrect={false}
               style={[styles.searchInput, { color: colors.text }]}
             />
           </View>
         </View>
+
+        <View style={[styles.segment, { backgroundColor: colors.input }]}>
+          {groupModes.map(([value, label, icon]) => {
+            const active = groupMode === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => switchGroupMode(value)}
+                style={[styles.segmentButton, active && { backgroundColor: colors.surface }]}
+              >
+                <Ionicons color={active ? colors.primary : colors.muted} name={icon} size={17} />
+                <Text style={[styles.segmentText, { color: active ? colors.text : colors.muted }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {groupMode !== 'all' ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupChips}>
+            <Pressable
+              onPress={() => setSelectedGroup('all')}
+              style={[
+                styles.groupChip,
+                { borderColor: colors.border, backgroundColor: colors.surface },
+                selectedGroup === 'all' && { backgroundColor: colors.text, borderColor: colors.text },
+              ]}
+            >
+              <Text style={[styles.groupChipText, { color: selectedGroup === 'all' ? colors.background : colors.text }]}>
+                すべて
+              </Text>
+            </Pressable>
+            {activeGroups.map((group) => (
+              <Pressable
+                key={group}
+                onPress={() => setSelectedGroup(group)}
+                style={[
+                  styles.groupChip,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                  selectedGroup === group && { backgroundColor: colors.text, borderColor: colors.text },
+                ]}
+              >
+                <Text style={[styles.groupChipText, { color: selectedGroup === group ? colors.background : colors.text }]}>
+                  {group}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
       </View>
 
       <FlatList
@@ -110,6 +185,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   searchInput: { flex: 1, fontSize: 15 },
+  segment: { borderRadius: 8, flexDirection: 'row', gap: 4, marginTop: 10, padding: 4 },
+  segmentButton: {
+    alignItems: 'center',
+    borderRadius: 7,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 38,
+    justifyContent: 'center',
+  },
+  segmentText: { fontSize: 12, fontWeight: '900' },
+  groupChips: { gap: 8, paddingTop: 10 },
+  groupChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  groupChipText: { fontSize: 12, fontWeight: '800' },
   listContent: { padding: 18, paddingBottom: 96 },
   gridItem: { flex: 1, maxWidth: '48.6%' },
   gridRow: { gap: 10, marginBottom: 10 },

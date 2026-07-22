@@ -21,6 +21,7 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
   const { colors } = useAppTheme();
   const [janCode, setJanCode] = useState(item.janCode ?? '');
   const [boxName, setBoxName] = useState(item.boxName);
+  const [seriesName, setSeriesName] = useState(item.seriesName);
   const [characterName, setCharacterName] = useState(item.characterName);
   const [variantName, setVariantName] = useState(item.variantName);
   const [imageUrl, setImageUrl] = useState(item.imageUrl ?? '');
@@ -31,6 +32,7 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
   useEffect(() => {
     setJanCode(item.janCode ?? '');
     setBoxName(item.boxName);
+    setSeriesName(item.seriesName);
     setCharacterName(item.characterName);
     setVariantName(item.variantName);
     setImageUrl(item.imageUrl ?? '');
@@ -47,6 +49,7 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
       await onSave({
         janCode: janCode.trim() || null,
         boxName: boxName.trim(),
+        seriesName: seriesName.trim() || 'シリーズ未設定',
         characterName: characterName.trim() || '未分類',
         variantName: variantName.trim() || '通常版',
         quantity: Math.max(0, Number(quantity) || 0),
@@ -75,6 +78,15 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
         value={boxName}
         onChangeText={setBoxName}
         placeholder="商品名"
+        placeholderTextColor={colors.muted}
+        style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
+      />
+
+      <Text style={[styles.label, { color: colors.muted }]}>シリーズ</Text>
+      <TextInput
+        value={seriesName}
+        onChangeText={setSeriesName}
+        placeholder="シリーズ未設定"
         placeholderTextColor={colors.muted}
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />

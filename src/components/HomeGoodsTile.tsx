@@ -23,6 +23,9 @@ export function HomeGoodsTile({ item }: Props) {
           <Text style={styles.quantityText}>{item.quantity}個</Text>
         </View>
       </View>
+      <Text numberOfLines={1} style={[styles.series, { color: colors.muted }]}>
+        {item.seriesName}
+      </Text>
       <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
         {item.boxName}
       </Text>
@@ -63,6 +66,7 @@ const styles = StyleSheet.create({
     right: 7,
   },
   quantityText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
-  title: { fontSize: 13, fontWeight: '900', lineHeight: 18, marginTop: 8 },
+  series: { fontSize: 10, fontWeight: '800', lineHeight: 14, marginTop: 8 },
+  title: { fontSize: 13, fontWeight: '900', lineHeight: 18, marginTop: 2 },
   meta: { fontSize: 11, lineHeight: 15, marginTop: 3 },
 });

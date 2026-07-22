@@ -30,7 +30,7 @@ export default function ManageScreen() {
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return goods.filter((item) => {
-      const target = [item.boxName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
+      const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
       return !normalized || target.toLowerCase().includes(normalized);
     });
   }, [goods, query]);
@@ -73,7 +73,7 @@ export default function ManageScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="編集するグッズを検索"
+            placeholder="シリーズ・キャラ・グッズを検索"
             placeholderTextColor={colors.muted}
             autoCorrect={false}
             style={[styles.searchInput, { color: colors.text }]}
@@ -118,11 +118,7 @@ export default function ManageScreen() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>グッズ詳細編集</Text>
               <View style={styles.closeButton} />
             </View>
-            <ScrollView
-              contentContainerStyle={styles.modalContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
+            <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {selectedItem ? (
                 <GoodsEditForm
                   item={selectedItem}

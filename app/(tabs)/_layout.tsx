@@ -15,11 +15,11 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          height: 64,
+          height: 66,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
       }}
     >
       <Tabs.Screen
@@ -41,6 +41,13 @@ export default function TabsLayout() {
         options={{
           title: 'スキャン',
           tabBarIcon: ({ color, size }) => <Ionicons color={color} name="barcode-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="mypage"
+        options={{
+          title: 'マイ',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="person-circle-outline" size={size} />,
         }}
       />
       <Tabs.Screen

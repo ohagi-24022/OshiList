@@ -8,6 +8,7 @@ import { GoodsImageField } from './GoodsImageField';
 type Props = {
   initialJanCode?: string | null;
   initialBoxName?: string;
+  initialSeriesName?: string;
   initialCharacterName?: string;
   initialVariantName?: string;
   initialImageUrl?: string | null;
@@ -23,6 +24,7 @@ const statuses: Array<[GoodsStatus, string]> = [
 export function ManualGoodsForm({
   initialJanCode,
   initialBoxName = '',
+  initialSeriesName = '',
   initialCharacterName = '',
   initialVariantName = '通常版',
   initialImageUrl = null,
@@ -30,6 +32,7 @@ export function ManualGoodsForm({
 }: Props) {
   const { colors } = useAppTheme();
   const [boxName, setBoxName] = useState(initialBoxName);
+  const [seriesName, setSeriesName] = useState(initialSeriesName);
   const [characterName, setCharacterName] = useState(initialCharacterName);
   const [variantName, setVariantName] = useState(initialVariantName);
   const [imageUrl, setImageUrl] = useState(initialImageUrl ?? '');
@@ -46,6 +49,7 @@ export function ManualGoodsForm({
       await onSubmit({
         janCode: initialJanCode ?? null,
         boxName: boxName.trim(),
+        seriesName: seriesName.trim() || 'シリーズ未設定',
         characterName: characterName.trim() || '未分類',
         variantName: variantName.trim() || '通常版',
         quantity: Math.max(0, Number(quantity) || 0),
@@ -53,6 +57,7 @@ export function ManualGoodsForm({
         status,
       });
       setBoxName('');
+      setSeriesName('');
       setCharacterName('');
       setVariantName('通常版');
       setImageUrl('');
@@ -72,6 +77,16 @@ export function ManualGoodsForm({
         value={boxName}
         onChangeText={setBoxName}
         placeholder="例: トレーディング缶バッジ"
+        placeholderTextColor={colors.muted}
+        returnKeyType="next"
+        style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
+      />
+
+      <Text style={[styles.label, { color: colors.muted }]}>シリーズ</Text>
+      <TextInput
+        value={seriesName}
+        onChangeText={setSeriesName}
+        placeholder="例: スーパーかぐや姫！"
         placeholderTextColor={colors.muted}
         returnKeyType="next"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}

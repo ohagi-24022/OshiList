@@ -4,6 +4,7 @@ export type Goods = {
   id: number;
   janCode: string | null;
   boxName: string;
+  seriesName: string;
   characterName: string;
   variantName: string;
   quantity: number;
@@ -16,6 +17,7 @@ export type Goods = {
 export type GoodsInput = {
   janCode?: string | null;
   boxName: string;
+  seriesName?: string;
   characterName: string;
   variantName: string;
   quantity?: number;

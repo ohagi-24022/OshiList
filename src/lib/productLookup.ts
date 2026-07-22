@@ -1,4 +1,4 @@
-import { ProductLookupResult, ReceiptParseResult } from '../types';
+import { ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
 
 type LookupApiResponse = Partial<{
   janCode: string;
@@ -125,4 +125,29 @@ export async function parseReceiptImage(imageBase64: string, mimeType = 'image/j
       }))
       .filter((item) => item.normalizedQuery.trim().length > 0),
   };
+}
+
+export async function searchProductsByName(query: string, limit = 5): Promise<ProductSearchCandidate[]> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('オフラインのため画像候補を取得できません。');
+  }
+
+  const response = await fetch(`${apiBaseUrl()}/search?q=${encodeURIComponent(normalizedQuery)}&limit=${limit}`);
+  const payload = (await response.json().catch(() => null)) as ProductCandidateApiResponse[] | { detail?: string } | null;
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+
+  return (Array.isArray(payload) ? payload : [])
+    .map((candidate) => ({
+      boxName: candidate.boxName ?? candidate.box_name ?? '',
+      imageUrl: candidate.imageUrl ?? candidate.image_url ?? null,
+      sourceLabel: candidate.sourceLabel ?? candidate.source_label ?? '商品検索API',
+    }))
+    .filter((candidate) => candidate.boxName.trim().length > 0);
 }

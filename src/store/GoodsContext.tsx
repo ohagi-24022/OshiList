@@ -22,6 +22,7 @@ function mapGoods(row: Record<string, unknown>): Goods {
     id: Number(row.id),
     janCode: (row.jan_code as string | null) ?? null,
     boxName: String(row.box_name),
+    seriesName: String(row.series_name ?? 'シリーズ未設定'),
     characterName: String(row.character_name),
     variantName: String(row.variant_name),
     quantity: Number(row.quantity),
@@ -38,6 +39,7 @@ async function migrate() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       jan_code TEXT,
       box_name TEXT NOT NULL,
+      series_name TEXT NOT NULL DEFAULT 'シリーズ未設定',
       character_name TEXT NOT NULL,
       variant_name TEXT NOT NULL,
       quantity INTEGER NOT NULL DEFAULT 1,
@@ -46,9 +48,15 @@ async function migrate() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE INDEX IF NOT EXISTS idx_goods_search ON goods(box_name, character_name, variant_name);
+    CREATE INDEX IF NOT EXISTS idx_goods_search ON goods(box_name, series_name, character_name, variant_name);
     CREATE INDEX IF NOT EXISTS idx_goods_jan ON goods(jan_code);
   `);
+
+  try {
+    await db.runAsync("ALTER TABLE goods ADD COLUMN series_name TEXT NOT NULL DEFAULT 'シリーズ未設定'");
+  } catch {
+    // Existing databases already have this column.
+  }
 }
 
 export function GoodsProvider({ children }: PropsWithChildren) {
@@ -71,11 +79,12 @@ export function GoodsProvider({ children }: PropsWithChildren) {
   const addGoods = useCallback(
     async (input: GoodsInput) => {
       await db.runAsync(
-        `INSERT INTO goods (jan_code, box_name, character_name, variant_name, quantity, image_url, status, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO goods (jan_code, box_name, series_name, character_name, variant_name, quantity, image_url, status, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         input.janCode ?? null,
         input.boxName.trim(),
-        input.characterName.trim(),
+        input.seriesName?.trim() || 'シリーズ未設定',
+        input.characterName.trim() || '未分類',
         input.variantName.trim() || '通常版',
         input.quantity ?? 1,
         input.imageUrl ?? null,
@@ -106,6 +115,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         `UPDATE goods
          SET jan_code = ?,
              box_name = ?,
+             series_name = ?,
              character_name = ?,
              variant_name = ?,
              quantity = ?,
@@ -115,6 +125,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
          WHERE id = ?`,
         input.janCode ?? null,
         input.boxName.trim(),
+        input.seriesName?.trim() || 'シリーズ未設定',
         input.characterName.trim() || '未分類',
         input.variantName.trim() || '通常版',
         Math.max(0, input.quantity ?? 0),
