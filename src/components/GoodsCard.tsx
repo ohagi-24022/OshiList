@@ -27,6 +27,8 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
   const { profile } = useProfile();
   const isManage = mode === 'manage';
   const markedAsOshi = isOshiGoods(item, profile);
+  const markColor = profile.markColor || colors.primary;
+  const markIcon = (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap;
 
   return (
     <Pressable
@@ -36,7 +38,7 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         styles.card,
         {
           backgroundColor: colors.surface,
-          borderColor: markedAsOshi ? colors.primary : colors.border,
+          borderColor: markedAsOshi ? markColor : colors.border,
           opacity: pressed ? 0.75 : 1,
         },
       ]}
@@ -48,8 +50,8 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
           <Ionicons color={colors.muted} name="image-outline" size={34} />
         )}
         {markedAsOshi ? (
-          <View style={[styles.coverBadge, { backgroundColor: colors.primary }]}>
-            <Ionicons color="#ffffff" name="heart" size={13} />
+          <View style={[styles.coverBadge, { backgroundColor: markColor }]}>
+            <Ionicons color="#ffffff" name={markIcon} size={13} />
           </View>
         ) : null}
       </View>
@@ -75,12 +77,12 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
           {item.seriesName}
         </Text>
         <View style={styles.characterRow}>
-          <Text numberOfLines={1} style={[styles.character, { color: markedAsOshi ? colors.primary : colors.text }]}>
+          <Text numberOfLines={1} style={[styles.character, { color: markedAsOshi ? markColor : colors.text }]}>
             {item.characterName}
           </Text>
           {markedAsOshi ? (
-            <View style={[styles.oshiBadge, { backgroundColor: colors.primary }]}>
-              <Ionicons color="#ffffff" name="heart" size={12} />
+            <View style={[styles.oshiBadge, { backgroundColor: markColor }]}>
+              <Ionicons color="#ffffff" name={markIcon} size={12} />
               <Text style={styles.oshiText}>推し</Text>
             </View>
           ) : null}

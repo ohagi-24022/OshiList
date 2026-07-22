@@ -10,6 +10,17 @@ import { useProfile } from '../../src/store/ProfileContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { ProductSearchCandidate } from '../../src/types';
 
+const markIconOptions: Array<[keyof typeof Ionicons.glyphMap, string]> = [
+  ['heart', 'ハート'],
+  ['star', '星'],
+  ['sparkles', 'きらめき'],
+  ['diamond', 'ダイヤ'],
+  ['ribbon', 'リボン'],
+  ['happy', '笑顔'],
+];
+
+const markColorOptions = ['#e94f7d', '#f5a400', '#7b61ff', '#00a7b5', '#31c759', '#111111'];
+
 export default function MyPageScreen() {
   const { colors } = useAppTheme();
   const { goods } = useGoods();
@@ -18,6 +29,10 @@ export default function MyPageScreen() {
   const [seriesName, setSeriesName] = useState(profile.seriesName);
   const [imageUrl, setImageUrl] = useState(profile.imageUrl ?? '');
   const [note, setNote] = useState(profile.note);
+  const [markIcon, setMarkIcon] = useState<keyof typeof Ionicons.glyphMap>(
+    (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap,
+  );
+  const [markColor, setMarkColor] = useState(profile.markColor ?? colors.primary);
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageCandidates, setImageCandidates] = useState<ProductSearchCandidate[]>([]);
 
@@ -26,13 +41,20 @@ export default function MyPageScreen() {
     setSeriesName(profile.seriesName);
     setImageUrl(profile.imageUrl ?? '');
     setNote(profile.note);
-  }, [profile]);
+    setMarkIcon((profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap);
+    setMarkColor(profile.markColor ?? colors.primary);
+  }, [colors.primary, profile]);
 
   const ownedForOshi = useMemo(() => {
     const targetName = oshiName.trim() || profile.oshiName.trim();
+    const targetSeries = seriesName.trim() || profile.seriesName.trim();
     if (!targetName) return [];
-    return goods.filter((item) => item.characterName === targetName && item.status === 'owned');
-  }, [goods, oshiName, profile.oshiName]);
+    return goods.filter((item) => {
+      const characterMatches = item.characterName === targetName;
+      const seriesMatches = !targetSeries || item.seriesName === targetSeries;
+      return characterMatches && seriesMatches && item.status === 'owned';
+    });
+  }, [goods, oshiName, profile.oshiName, profile.seriesName, seriesName]);
 
   const localImageCandidates = useMemo(
     () =>
@@ -78,6 +100,8 @@ export default function MyPageScreen() {
       seriesName: seriesName.trim(),
       imageUrl: imageUrl.trim() || null,
       note: note.trim(),
+      markIcon,
+      markColor: markColor.trim() || null,
     });
     Alert.alert('保存しました', 'マイページに推し設定を反映しました。');
   };
@@ -87,11 +111,9 @@ export default function MyPageScreen() {
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View style={styles.titleRow}>
-          <View>
-            <Text style={[styles.title, { color: colors.text }]}>マイページ</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>推しプロフィールと画像を設定できます。</Text>
-          </View>
+        <View>
+          <Text style={[styles.title, { color: colors.text }]}>マイページ</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>推しプロフィール、画像、推しマークを設定できます。</Text>
         </View>
 
         <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -101,6 +123,9 @@ export default function MyPageScreen() {
             ) : (
               <Ionicons color={colors.muted} name="person-circle-outline" size={54} />
             )}
+            <View style={[styles.heroMark, { backgroundColor: markColor }]}>
+              <Ionicons color="#ffffff" name={markIcon} size={14} />
+            </View>
           </View>
           <View style={styles.heroText}>
             <Text style={[styles.heroName, { color: colors.text }]} numberOfLines={1}>
@@ -109,7 +134,7 @@ export default function MyPageScreen() {
             <Text style={[styles.heroMeta, { color: colors.muted }]} numberOfLines={1}>
               {seriesName.trim() || 'シリーズ未設定'}
             </Text>
-            <Text style={[styles.heroCount, { color: colors.primary }]}>{ownedForOshi.length}種類の所持グッズ</Text>
+            <Text style={[styles.heroCount, { color: markColor }]}>{ownedForOshi.length}種類の所持グッズ</Text>
           </View>
         </View>
 
@@ -163,6 +188,56 @@ export default function MyPageScreen() {
             </ScrollView>
           )}
 
+          <Text style={[styles.label, { color: colors.muted }]}>推しマーク</Text>
+          <View style={styles.markPreviewRow}>
+            <View style={[styles.markPreview, { backgroundColor: markColor }]}>
+              <Ionicons color="#ffffff" name={markIcon} size={20} />
+              <Text style={styles.markPreviewText}>推し</Text>
+            </View>
+            <TextInput
+              value={markColor}
+              onChangeText={setMarkColor}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="#e94f7d"
+              placeholderTextColor={colors.muted}
+              style={[styles.markColorInput, { backgroundColor: colors.input, color: colors.text }]}
+            />
+          </View>
+
+          <View style={styles.markIconGrid}>
+            {markIconOptions.map(([icon, label]) => {
+              const active = markIcon === icon;
+              return (
+                <Pressable
+                  key={icon}
+                  onPress={() => setMarkIcon(icon)}
+                  style={[
+                    styles.markIconButton,
+                    { borderColor: active ? markColor : colors.border, backgroundColor: active ? colors.elevated : colors.surface },
+                  ]}
+                >
+                  <Ionicons color={active ? markColor : colors.text} name={icon} size={20} />
+                  <Text style={[styles.markIconText, { color: colors.text }]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.markColorRow}>
+            {markColorOptions.map((color) => (
+              <Pressable
+                key={color}
+                accessibilityLabel={`${color}を推しマーク色に設定`}
+                onPress={() => setMarkColor(color)}
+                style={[
+                  styles.markColorChip,
+                  { backgroundColor: color, borderColor: markColor.toLowerCase() === color.toLowerCase() ? colors.text : colors.border },
+                ]}
+              />
+            ))}
+          </View>
+
           <Text style={[styles.label, { color: colors.muted }]}>メモ</Text>
           <TextInput
             value={note}
@@ -186,7 +261,6 @@ export default function MyPageScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { gap: 14, padding: 18, paddingBottom: 96 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between' },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   hero: {
@@ -204,9 +278,20 @@ const styles = StyleSheet.create({
     height: 88,
     justifyContent: 'center',
     overflow: 'hidden',
+    position: 'relative',
     width: 88,
   },
   heroImageInner: { height: '100%', width: '100%' },
+  heroMark: {
+    alignItems: 'center',
+    borderRadius: 999,
+    bottom: 6,
+    height: 30,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 6,
+    width: 30,
+  },
   heroText: { flex: 1 },
   heroName: { fontSize: 22, fontWeight: '900' },
   heroMeta: { fontSize: 13, lineHeight: 18, marginTop: 4 },
@@ -240,6 +325,43 @@ const styles = StyleSheet.create({
   },
   imageCandidateInner: { height: 68, width: '100%' },
   candidateLabel: { fontSize: 10, fontWeight: '800', paddingHorizontal: 6, paddingTop: 5 },
+  markPreviewRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  markPreview: {
+    alignItems: 'center',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 6,
+    height: 42,
+    justifyContent: 'center',
+    minWidth: 88,
+    paddingHorizontal: 13,
+  },
+  markPreviewText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
+  markColorInput: {
+    borderRadius: 8,
+    flex: 1,
+    fontSize: 15,
+    height: 42,
+    paddingHorizontal: 12,
+  },
+  markIconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  markIconButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: '31%',
+    gap: 5,
+    height: 58,
+    justifyContent: 'center',
+  },
+  markIconText: { fontSize: 11, fontWeight: '800' },
+  markColorRow: { flexDirection: 'row', gap: 9, marginTop: 10 },
+  markColorChip: {
+    borderRadius: 999,
+    borderWidth: 3,
+    height: 34,
+    width: 34,
+  },
   noteInput: {
     borderRadius: 8,
     fontSize: 15,

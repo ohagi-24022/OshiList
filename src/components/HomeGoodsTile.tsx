@@ -14,9 +14,11 @@ export function HomeGoodsTile({ item }: Props) {
   const { colors } = useAppTheme();
   const { profile } = useProfile();
   const markedAsOshi = isOshiGoods(item, profile);
+  const markColor = profile.markColor || colors.primary;
+  const markIcon = (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap;
 
   return (
-    <View style={[styles.tile, { backgroundColor: colors.surface, borderColor: markedAsOshi ? colors.primary : colors.border }]}>
+    <View style={[styles.tile, { backgroundColor: colors.surface, borderColor: markedAsOshi ? markColor : colors.border }]}>
       <View style={[styles.imageWrap, { backgroundColor: colors.elevated }]}>
         {item.imageUrl ? (
           <Image source={{ uri: item.imageUrl }} style={styles.image} />
@@ -24,8 +26,8 @@ export function HomeGoodsTile({ item }: Props) {
           <Ionicons color={colors.muted} name="image-outline" size={38} />
         )}
         {markedAsOshi ? (
-          <View style={[styles.oshiBadge, { backgroundColor: colors.primary }]}>
-            <Ionicons color="#ffffff" name="heart" size={13} />
+          <View style={[styles.oshiBadge, { backgroundColor: markColor }]}>
+            <Ionicons color="#ffffff" name={markIcon} size={13} />
             <Text style={styles.oshiText}>推し</Text>
           </View>
         ) : null}
@@ -39,7 +41,7 @@ export function HomeGoodsTile({ item }: Props) {
       <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
         {item.boxName}
       </Text>
-      <Text numberOfLines={1} style={[styles.meta, { color: markedAsOshi ? colors.primary : colors.muted }]}>
+      <Text numberOfLines={1} style={[styles.meta, { color: markedAsOshi ? markColor : colors.muted }]}>
         {item.characterName} / {item.variantName}
       </Text>
     </View>

@@ -6,6 +6,8 @@ export type OshiProfile = {
   seriesName: string;
   imageUrl: string | null;
   note: string;
+  markIcon: string;
+  markColor: string | null;
 };
 
 type ProfileContextValue = {
@@ -20,6 +22,8 @@ const defaultProfile: OshiProfile = {
   seriesName: '',
   imageUrl: null,
   note: '',
+  markIcon: 'heart',
+  markColor: null,
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
