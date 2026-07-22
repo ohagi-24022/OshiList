@@ -36,16 +36,16 @@ export function ManualGoodsForm({
   const [status, setStatus] = useState<GoodsStatus>('owned');
   const [saving, setSaving] = useState(false);
 
-  const disabled = !boxName.trim() || !characterName.trim() || saving;
+  const disabled = !boxName.trim() || saving;
 
   const save = async () => {
     if (disabled) return;
     setSaving(true);
     await onSubmit({
       janCode: initialJanCode ?? null,
-      boxName,
-      characterName,
-      variantName,
+      boxName: boxName.trim(),
+      characterName: characterName.trim() || '未分類',
+      variantName: variantName.trim() || '通常版',
       quantity: Math.max(0, Number(quantity) || 0),
       imageUrl: imageUrl.trim() || null,
       status,
@@ -68,6 +68,7 @@ export function ManualGoodsForm({
         onChangeText={setBoxName}
         placeholder="例: スーパーかぐや姫！ トレーディング缶バッジ"
         placeholderTextColor={colors.muted}
+        returnKeyType="next"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
@@ -75,10 +76,12 @@ export function ManualGoodsForm({
       <TextInput
         value={characterName}
         onChangeText={setCharacterName}
-        placeholder="例: 酒寄彩葉"
+        placeholder="未入力なら「未分類」で保存"
         placeholderTextColor={colors.muted}
+        returnKeyType="next"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
+      <Text style={[styles.helper, { color: colors.muted }]}>あとから編集する前提で、空のままでも登録できます。</Text>
 
       <Text style={[styles.label, { color: colors.muted }]}>バリエーション</Text>
       <TextInput
@@ -86,6 +89,7 @@ export function ManualGoodsForm({
         onChangeText={setVariantName}
         placeholder="例: ホログラム仕様"
         placeholderTextColor={colors.muted}
+        returnKeyType="next"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
@@ -101,6 +105,7 @@ export function ManualGoodsForm({
           placeholderTextColor={colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
+          returnKeyType="next"
           style={[styles.imageInput, { backgroundColor: colors.input, color: colors.text }]}
         />
       </View>
@@ -110,6 +115,7 @@ export function ManualGoodsForm({
         value={quantity}
         onChangeText={setQuantity}
         keyboardType="number-pad"
+        returnKeyType="done"
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
@@ -151,6 +157,7 @@ const styles = StyleSheet.create({
   },
   jan: { fontSize: 12, fontWeight: '800', marginBottom: 2 },
   label: { fontSize: 12, fontWeight: '700', marginBottom: 7, marginTop: 12 },
+  helper: { fontSize: 11, lineHeight: 16, marginTop: 6 },
   input: {
     borderRadius: 8,
     fontSize: 15,

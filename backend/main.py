@@ -23,7 +23,7 @@ ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*"
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
 RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
 
-app = FastAPI(title="OshiList Product Lookup", version="0.3.0")
+app = FastAPI(title="OshiList Product Lookup", version="0.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -164,7 +164,7 @@ async def search_yahoo_item(jan: str) -> ProductCandidate:
         raise HTTPException(status_code=502, detail="Yahoo!ショッピングAPIへ接続できませんでした。")
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="Yahoo!ショッピングAPIへのリクエストに失敗しました。")
+        raise HTTPException(status_code=502, detail=f"Yahoo!ショッピングAPIへのリクエストに失敗しました。status={response.status_code}")
 
     hits = response.json().get("hits") or []
     if not hits:
@@ -195,7 +195,7 @@ async def search_rakuten_item(jan: str) -> ProductCandidate:
         raise HTTPException(status_code=502, detail="楽天商品検索APIへ接続できませんでした。")
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="楽天商品検索APIへのリクエストに失敗しました。")
+        raise HTTPException(status_code=502, detail=f"楽天商品検索APIへのリクエストに失敗しました。status={response.status_code}")
 
     items = response.json().get("Items") or []
     if not items:
@@ -269,6 +269,17 @@ def parse_gemini_lineup(payload: dict[str, Any]) -> list[LineupItem]:
     return parse_lineup_items(parsed)
 
 
+def gemini_error_message(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return f"Gemini APIでラインナップ解析に失敗しました。status={response.status_code}"
+    message = payload.get("error", {}).get("message")
+    if isinstance(message, str) and message:
+        return f"Gemini APIでラインナップ解析に失敗しました。status={response.status_code}: {message}"
+    return f"Gemini APIでラインナップ解析に失敗しました。status={response.status_code}"
+
+
 async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse:
     if not GEMINI_API_KEY:
         return AnalyzeLineupResponse(warnings=["GEMINI_API_KEYが未設定のため、ラインナップ解析はスキップしました。"])
@@ -278,14 +289,15 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
         "商品名からトレーディンググッズの中身候補を推定してください。"
         "実在確認できない候補を水増しせず、不明なら空配列を返してください。"
         "キャラクター名と仕様名だけを抽出してください。"
+        "返答はJSON配列のみです。"
     )
     schema = {
-        "type": "ARRAY",
+        "type": "array",
         "items": {
-            "type": "OBJECT",
+            "type": "object",
             "properties": {
-                "characterName": {"type": "STRING"},
-                "variantName": {"type": "STRING"},
+                "characterName": {"type": "string"},
+                "variantName": {"type": "string"},
             },
             "required": ["characterName", "variantName"],
         },
@@ -295,7 +307,7 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
         async with httpx.AsyncClient(timeout=25) as client:
             response = await client.post(
                 endpoint,
-                params={"key": GEMINI_API_KEY},
+                headers={"x-goog-api-key": GEMINI_API_KEY},
                 json={
                     "contents": [{"role": "user", "parts": [{"text": f"{prompt}\n\n商品名: {product_name}"}]}],
                     "generationConfig": {
@@ -309,7 +321,7 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
         return AnalyzeLineupResponse(warnings=["Gemini APIへ接続できなかったため、ラインナップ解析はスキップしました。"])
 
     if response.status_code != 200:
-        return AnalyzeLineupResponse(warnings=["Gemini APIでラインナップ解析に失敗しました。"])
+        return AnalyzeLineupResponse(warnings=[gemini_error_message(response)])
 
     lineup = parse_gemini_lineup(response.json())
     warnings = [] if lineup else ["Geminiから有効なラインナップ候補を取得できませんでした。"]
