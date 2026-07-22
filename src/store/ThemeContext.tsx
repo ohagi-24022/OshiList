@@ -45,6 +45,7 @@ type ThemeContextValue = {
   setPreset: (preset: ThemePreset) => void;
   setCustomColor: (key: ColorRole, value: string) => void;
   saveCurrentAsPreset: (name: string) => Promise<void>;
+  deleteCustomPreset: (id: string) => Promise<void>;
 };
 
 const builtInPresets: ThemePreset[] = [
@@ -180,6 +181,16 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     persistTheme(nextPreset);
   };
 
+  const deleteCustomPreset = async (id: string) => {
+    const nextPresets = customPresets.filter((preset) => preset.id !== id);
+    setCustomPresets(nextPresets);
+    await AsyncStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+
+    if (theme.id === id) {
+      persistTheme(builtInPresets[0]);
+    }
+  };
+
   const value = useMemo<ThemeContextValue>(
     () => ({
       colors: theme,
@@ -189,6 +200,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       setPreset: persistTheme,
       setCustomColor: (key, value) => persistTheme({ ...theme, id: 'draft-custom', name: '編集中のテーマ', [key]: value }),
       saveCurrentAsPreset,
+      deleteCustomPreset,
     }),
     [customPresets, theme],
   );

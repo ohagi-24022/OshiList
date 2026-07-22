@@ -1,21 +1,36 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useGoods } from '../../src/store/GoodsContext';
-import { useAppTheme } from '../../src/store/ThemeContext';
+import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 
 export default function SettingsScreen() {
-  const { colors, presets, setPreset, customPresets } = useAppTheme();
+  const { colors, presets, setPreset, customPresets, deleteCustomPreset } = useAppTheme();
   const { goods } = useGoods();
+
+  const confirmDeletePreset = (preset: ThemePreset) => {
+    if (!preset.custom) return;
+
+    Alert.alert('テーマを削除しますか？', `「${preset.name}」をプリセットから削除します。`, [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '削除',
+        style: 'destructive',
+        onPress: () => deleteCustomPreset(preset.id),
+      },
+    ]);
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.content}>
         <View>
           <Text style={[styles.title, { color: colors.text }]}>設定</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>テーマはプリセットから選ぶか、自分用に編集できます。</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>
+            テーマのプリセット選択や、自分好みの配色編集ができます。
+          </Text>
         </View>
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -43,7 +58,9 @@ export default function SettingsScreen() {
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>テーマプリセット</Text>
           {!!customPresets.length && (
-            <Text style={[styles.panelHelp, { color: colors.muted }]}>保存したテーマもここから選べます。</Text>
+            <Text style={[styles.panelHelp, { color: colors.muted }]}>
+              保存したテーマは右上の削除ボタンから消せます。標準テーマは削除できません。
+            </Text>
           )}
           <View style={styles.presetGrid}>
             {presets.map((preset) => (
@@ -52,6 +69,18 @@ export default function SettingsScreen() {
                 onPress={() => setPreset(preset)}
                 style={[styles.preset, { borderColor: colors.border, backgroundColor: preset.background }]}
               >
+                {preset.custom ? (
+                  <Pressable
+                    accessibilityLabel={`${preset.name}を削除`}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      confirmDeletePreset(preset);
+                    }}
+                    style={[styles.deleteButton, { backgroundColor: preset.surface, borderColor: preset.border }]}
+                  >
+                    <Ionicons color={preset.danger} name="trash-outline" size={16} />
+                  </Pressable>
+                ) : null}
                 <View style={styles.presetSwatches}>
                   <View style={[styles.swatch, { backgroundColor: preset.primary }]} />
                   <View style={[styles.swatch, { backgroundColor: preset.secondary }]} />
@@ -60,7 +89,7 @@ export default function SettingsScreen() {
                 <Text style={[styles.presetText, { color: preset.text }]} numberOfLines={1}>
                   {preset.name}
                 </Text>
-                {preset.custom && <Text style={[styles.customBadge, { color: preset.muted }]}>保存済み</Text>}
+                {preset.custom ? <Text style={[styles.customBadge, { color: preset.muted }]}>保存済み</Text> : null}
               </Pressable>
             ))}
           </View>
@@ -71,7 +100,7 @@ export default function SettingsScreen() {
           <View style={styles.dataRow}>
             <Ionicons color={colors.muted} name="phone-portrait-outline" size={20} />
             <Text style={[styles.dataText, { color: colors.muted }]}>
-              コレクションはexpo-sqliteに保存され、電波がない会場でも閲覧と数量変更ができます。
+              コレクションはexpo-sqliteに保存され、電波のない場所でも閲覧と数量変更ができます。
             </Text>
           </View>
         </View>
@@ -109,13 +138,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexBasis: '47%',
     gap: 7,
-    minHeight: 72,
     justifyContent: 'center',
+    minHeight: 84,
     paddingHorizontal: 10,
+    position: 'relative',
+  },
+  deleteButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 7,
+    top: 7,
+    width: 30,
+    zIndex: 2,
   },
   presetSwatches: { flexDirection: 'row', gap: 5 },
   swatch: { borderRadius: 999, height: 16, width: 16 },
-  presetText: { fontSize: 13, fontWeight: '800' },
+  presetText: { fontSize: 13, fontWeight: '800', paddingRight: 26 },
   customBadge: { fontSize: 10, fontWeight: '800' },
   dataRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 10 },
   dataText: { flex: 1, fontSize: 13, lineHeight: 19 },
