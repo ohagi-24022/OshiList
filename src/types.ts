@@ -28,6 +28,7 @@ export type ProductLookupResult = {
   boxName: string;
   imageUrl: string | null;
   sourceLabel: string;
+  warnings?: string[];
   lineup: Array<{
     characterName: string;
     variantName: string;

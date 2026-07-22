@@ -122,7 +122,7 @@ export default function ScanScreen() {
             </Pressable>
           </View>
           <Text style={[styles.helper, { color: colors.muted }]}>
-            実商品を取得するには `EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL` に商品検索APIを設定してください。
+            実商品を取得するには `EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL` にバックエンドURLを設定してください。
           </Text>
         </View>
 
@@ -148,19 +148,30 @@ export default function ScanScreen() {
             </View>
 
             {!!result && (
-              <View style={[styles.productPreview, { backgroundColor: colors.elevated }]}>
-                <View style={[styles.productImage, { borderColor: colors.border }]}>
-                  {result.imageUrl ? <Image source={{ uri: result.imageUrl }} style={styles.productImageInner} /> : null}
+              <>
+                <View style={[styles.productPreview, { backgroundColor: colors.elevated }]}>
+                  <View style={[styles.productImage, { borderColor: colors.border }]}>
+                    {result.imageUrl ? <Image source={{ uri: result.imageUrl }} style={styles.productImageInner} /> : null}
+                  </View>
+                  <View style={styles.productText}>
+                    <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>
+                      {result.boxName}
+                    </Text>
+                    <Text style={[styles.productMeta, { color: colors.muted }]}>
+                      {result.lineup.length ? `${result.lineup.length}件の候補` : '候補なし'}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.productText}>
-                  <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>
-                    {result.boxName}
-                  </Text>
-                  <Text style={[styles.productMeta, { color: colors.muted }]}>
-                    {result.lineup.length ? `${result.lineup.length}件の候補` : '候補なし'}
-                  </Text>
-                </View>
-              </View>
+                {!!result.warnings?.length && (
+                  <View style={[styles.warningBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                    {result.warnings.map((warning) => (
+                      <Text key={warning} style={[styles.warningText, { color: colors.muted }]}>
+                        {warning}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </>
             )}
 
             <ScrollView style={styles.candidateList}>
@@ -276,6 +287,8 @@ const styles = StyleSheet.create({
   productText: { flex: 1, justifyContent: 'center' },
   productName: { fontSize: 15, fontWeight: '900', lineHeight: 20 },
   productMeta: { fontSize: 12, marginTop: 5 },
+  warningBox: { borderRadius: 8, borderWidth: 1, gap: 4, marginTop: 10, padding: 10 },
+  warningText: { fontSize: 11, lineHeight: 16 },
   candidateList: { marginTop: 14 },
   candidate: {
     alignItems: 'center',

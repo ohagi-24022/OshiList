@@ -8,11 +8,22 @@ type LookupApiResponse = Partial<{
   image_url: string | null;
   sourceLabel: string;
   source: string;
+  warnings: string[];
   lineup: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
   variants: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
 }>;
 
 const LOOKUP_API_URL = process.env.EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL;
+
+function readErrorMessage(payload: unknown) {
+  if (payload && typeof payload === 'object' && 'detail' in payload) {
+    const detail = (payload as { detail?: unknown }).detail;
+    if (typeof detail === 'string') {
+      return detail;
+    }
+  }
+  return '商品検索APIから情報を取得できませんでした。手動登録に切り替えてください。';
+}
 
 export async function lookupProductByJan(janCode: string): Promise<ProductLookupResult> {
   const normalizedJan = janCode.trim();
@@ -31,23 +42,24 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
   }
 
   const response = await fetch(`${LOOKUP_API_URL}?jan=${encodeURIComponent(normalizedJan)}`);
+  const payload = (await response.json().catch(() => null)) as LookupApiResponse | null;
   if (!response.ok) {
-    throw new Error('商品検索APIから情報を取得できませんでした。手動登録に切り替えてください。');
+    throw new Error(readErrorMessage(payload));
   }
 
-  const payload = (await response.json()) as LookupApiResponse;
-  const variants = payload.lineup ?? payload.variants ?? [];
-  const boxName = payload.boxName ?? payload.productName;
+  const variants = payload?.lineup ?? payload?.variants ?? [];
+  const boxName = payload?.boxName ?? payload?.productName;
 
   if (!boxName) {
     throw new Error('このJANコードに一致する商品が見つかりませんでした。手動登録に切り替えてください。');
   }
 
   return {
-    janCode: payload.janCode ?? normalizedJan,
+    janCode: payload?.janCode ?? normalizedJan,
     boxName,
-    imageUrl: payload.imageUrl ?? payload.image_url ?? null,
-    sourceLabel: payload.sourceLabel ?? payload.source ?? '商品検索API',
+    imageUrl: payload?.imageUrl ?? payload?.image_url ?? null,
+    sourceLabel: payload?.sourceLabel ?? payload?.source ?? '商品検索API',
+    warnings: payload?.warnings ?? [],
     lineup: variants
       .map((variant) => ({
         characterName: variant.characterName ?? variant.character_name ?? '',

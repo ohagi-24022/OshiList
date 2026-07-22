@@ -1,34 +1,158 @@
+import html
+import json
 import os
+import re
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
 RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
-RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
+YAHOO_APP_ID = os.getenv("YAHOO_APP_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL")
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
-app = FastAPI(title="OshiList Product Lookup")
+RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
+YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
+OPENAI_CHAT_COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+
+app = FastAPI(title="OshiList Product Lookup", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 
-@app.get("/lookup")
-async def lookup(jan: str = Query(..., min_length=8, max_length=14)) -> dict[str, Any]:
-    if not jan.isdigit():
-        raise HTTPException(status_code=400, detail="JAN must be numeric.")
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def landing_page() -> str:
+    return """
+    <!doctype html>
+    <html lang="ja">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>OshiList</title>
+        <style>
+          body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #171622; background: #fbfaff; }
+          main { max-width: 720px; margin: 0 auto; padding: 56px 20px; }
+          h1 { font-size: 36px; margin: 0 0 12px; }
+          p { line-height: 1.8; }
+          a { color: #7b61ff; font-weight: 700; }
+          .panel { background: #ffffff; border: 1px solid #ddd7ff; border-radius: 8px; padding: 20px; margin-top: 24px; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>OshiList</h1>
+          <p>OshiListは、推しグッズの所持状況を管理するアプリです。JANコードから商品名と画像を取得し、コレクション登録と重複購入防止を補助します。</p>
+          <div class="panel">
+            <p>このサイトはOshiListアプリのバックエンドAPIおよびアプリケーション紹介ページです。</p>
+            <p><a href="/privacy">プライバシーポリシー</a> / <a href="/health">APIヘルスチェック</a></p>
+          </div>
+        </main>
+      </body>
+    </html>
+    """
 
+
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+async def privacy_page() -> str:
+    app_name = html.escape("OshiList")
+    return f"""
+    <!doctype html>
+    <html lang="ja">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{app_name} Privacy Policy</title>
+        <style>
+          body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #171622; background: #ffffff; }}
+          main {{ max-width: 760px; margin: 0 auto; padding: 48px 20px; }}
+          h1 {{ font-size: 30px; margin: 0 0 18px; }}
+          h2 {{ font-size: 18px; margin-top: 28px; }}
+          p, li {{ line-height: 1.8; }}
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>プライバシーポリシー</h1>
+          <p>{app_name}は、推しグッズ管理を補助するためにJANコード、商品名、商品画像URL、登録内容を利用します。</p>
+          <h2>取得する情報</h2>
+          <ul>
+            <li>ユーザーが入力またはスキャンしたJANコード</li>
+            <li>商品検索APIから取得した商品名、商品画像URL</li>
+            <li>ユーザーがアプリ内で登録したグッズ情報</li>
+          </ul>
+          <h2>利用目的</h2>
+          <p>商品登録の補助、コレクション管理、重複購入防止のために利用します。</p>
+          <h2>外部API</h2>
+          <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini APIを利用する場合があります。</p>
+          <h2>保存</h2>
+          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索の中継に利用します。</p>
+        </main>
+      </body>
+    </html>
+    """
+
+
+class LineupItem(BaseModel):
+    characterName: str = Field(..., min_length=1)
+    variantName: str = Field(default="通常版", min_length=1)
+
+
+class LookupResponse(BaseModel):
+    janCode: str
+    boxName: str
+    imageUrl: str | None = None
+    sourceLabel: str
+    lineup: list[LineupItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AnalyzeLineupRequest(BaseModel):
+    productName: str = Field(..., min_length=1)
+
+
+class AnalyzeLineupResponse(BaseModel):
+    lineup: list[LineupItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ProductCandidate(BaseModel):
+    boxName: str
+    imageUrl: str | None = None
+    sourceLabel: str
+
+
+def validate_jan(jan: str) -> str:
+    normalized = jan.strip()
+    if not re.fullmatch(r"\d{8,14}", normalized):
+        raise HTTPException(status_code=400, detail="JANコードは8〜14桁の数字で指定してください。")
+    return normalized
+
+
+def first_image_url(item: dict[str, Any]) -> str | None:
+    image_sets = item.get("mediumImageUrls") or item.get("smallImageUrls") or []
+    if not image_sets:
+        return None
+    image_url = image_sets[0].get("imageUrl")
+    return image_url.replace("?_ex=128x128", "") if isinstance(image_url, str) else None
+
+
+async def search_rakuten_item(jan: str) -> tuple[str, str | None]:
     if not RAKUTEN_APP_ID:
-      raise HTTPException(status_code=503, detail="RAKUTEN_APP_ID is not configured.")
+        raise HTTPException(status_code=503, detail="RAKUTEN_APP_IDが未設定です。")
 
     async with httpx.AsyncClient(timeout=12) as client:
         response = await client.get(
@@ -42,21 +166,168 @@ async def lookup(jan: str = Query(..., min_length=8, max_length=14)) -> dict[str
         )
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="Product API request failed.")
+        raise HTTPException(status_code=502, detail="楽天商品検索APIへのリクエストに失敗しました。")
 
     payload = response.json()
     items = payload.get("Items") or []
     if not items:
-        raise HTTPException(status_code=404, detail="Product was not found.")
+        raise HTTPException(status_code=404, detail="このJANコードの商品は見つかりませんでした。")
 
     item = items[0].get("Item", {})
-    image_urls = item.get("mediumImageUrls") or item.get("smallImageUrls") or []
-    image_url = image_urls[0].get("imageUrl") if image_urls else None
+    product_name = item.get("itemName")
+    if not product_name:
+        raise HTTPException(status_code=404, detail="商品名を取得できませんでした。")
 
+    return product_name, first_image_url(item)
+
+
+async def search_yahoo_item(jan: str) -> ProductCandidate:
+    if not YAHOO_APP_ID:
+        raise HTTPException(status_code=503, detail="YAHOO_APP_IDが未設定です。")
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.get(
+            YAHOO_ENDPOINT,
+            params={
+                "appid": YAHOO_APP_ID,
+                "jan_code": jan,
+                "image_size": 600,
+                "results": 1,
+            },
+        )
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Yahoo!ショッピングAPIへのリクエストに失敗しました。")
+
+    payload = response.json()
+    hits = payload.get("hits") or []
+    if not hits:
+        raise HTTPException(status_code=404, detail="Yahoo!ショッピングで商品が見つかりませんでした。")
+
+    item = hits[0]
+    product_name = item.get("name")
+    if not product_name:
+        raise HTTPException(status_code=404, detail="Yahoo!ショッピングで商品名を取得できませんでした。")
+
+    image = item.get("exImage") or item.get("image") or {}
+    image_url = image.get("url") or image.get("medium") or image.get("small")
+    return ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="Yahoo!ショッピング")
+
+
+async def search_product(jan: str, provider: str) -> tuple[ProductCandidate, list[str]]:
+    provider_order = ["yahoo", "rakuten"] if provider == "auto" else [provider]
+    warnings: list[str] = []
+
+    for current_provider in provider_order:
+        try:
+            if current_provider == "yahoo":
+                return await search_yahoo_item(jan), warnings
+            if current_provider == "rakuten":
+                product_name, image_url = await search_rakuten_item(jan)
+                return ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="楽天商品検索"), warnings
+            warnings.append(f"未対応の検索プロバイダです: {current_provider}")
+        except HTTPException as exc:
+            warnings.append(f"{current_provider}: {exc.detail}")
+
+    if all("未設定" in warning for warning in warnings):
+        raise HTTPException(status_code=503, detail="YAHOO_APP_IDまたはRAKUTEN_APP_IDを設定してください。")
+
+    raise HTTPException(
+        status_code=404,
+        detail="設定済みの商品検索APIでは商品が見つかりませんでした。手動登録に切り替えてください。",
+    )
+
+
+def parse_lineup_json(text: str) -> list[LineupItem]:
+    start = text.find("[")
+    end = text.rfind("]")
+    if start < 0 or end < start:
+        return []
+
+    try:
+        raw_items = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return []
+
+    lineup: list[LineupItem] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        character_name = str(item.get("characterName") or item.get("character_name") or "").strip()
+        variant_name = str(item.get("variantName") or item.get("variant_name") or "通常版").strip()
+        if character_name:
+            lineup.append(LineupItem(characterName=character_name, variantName=variant_name or "通常版"))
+    return lineup
+
+
+async def analyze_lineup_with_ai(product_name: str) -> AnalyzeLineupResponse:
+    warnings: list[str] = []
+    if not OPENAI_API_KEY or not OPENAI_MODEL:
+        return AnalyzeLineupResponse(
+            warnings=["OPENAI_API_KEYまたはOPENAI_MODELが未設定のため、ラインナップ解析はスキップしました。"]
+        )
+
+    prompt = (
+        "商品名からトレーディンググッズの中身候補を推定してください。"
+        "実在確認できない候補を水増しせず、不明なら空配列を返してください。"
+        "JSON配列のみを返してください。形式: "
+        '[{"characterName":"キャラクター名","variantName":"通常版"}]'
+    )
+
+    async with httpx.AsyncClient(timeout=25) as client:
+        response = await client.post(
+            OPENAI_CHAT_COMPLETIONS_ENDPOINT,
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": OPENAI_MODEL,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": product_name},
+                ],
+                "temperature": 0.1,
+            },
+        )
+
+    if response.status_code != 200:
+        return AnalyzeLineupResponse(warnings=["AI APIでラインナップ解析に失敗しました。"])
+
+    content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+    lineup = parse_lineup_json(content)
+    if not lineup:
+        warnings.append("AIから有効なラインナップ候補を取得できませんでした。")
+    return AnalyzeLineupResponse(lineup=lineup, warnings=warnings)
+
+
+@app.get("/health")
+async def health() -> dict[str, Any]:
     return {
-        "janCode": jan,
-        "boxName": item.get("itemName") or f"JAN {jan}",
-        "imageUrl": image_url,
-        "sourceLabel": "楽天商品検索",
-        "lineup": [],
+        "ok": True,
+        "yahooConfigured": bool(YAHOO_APP_ID),
+        "rakutenConfigured": bool(RAKUTEN_APP_ID),
+        "aiConfigured": bool(OPENAI_API_KEY and OPENAI_MODEL),
     }
+
+
+@app.get("/lookup", response_model=LookupResponse)
+async def lookup(
+    jan: str = Query(..., min_length=8, max_length=14),
+    analyze: bool = Query(default=True),
+    provider: str = Query(default="auto", pattern="^(auto|yahoo|rakuten)$"),
+) -> LookupResponse:
+    normalized_jan = validate_jan(jan)
+    product, search_warnings = await search_product(normalized_jan, provider)
+    ai_result = await analyze_lineup_with_ai(product.boxName) if analyze else AnalyzeLineupResponse()
+
+    return LookupResponse(
+        janCode=normalized_jan,
+        boxName=product.boxName,
+        imageUrl=product.imageUrl,
+        sourceLabel=product.sourceLabel,
+        lineup=ai_result.lineup,
+        warnings=[*search_warnings, *ai_result.warnings],
+    )
+
+
+@app.post("/analyze-lineup", response_model=AnalyzeLineupResponse)
+async def analyze_lineup(request: AnalyzeLineupRequest) -> AnalyzeLineupResponse:
+    return await analyze_lineup_with_ai(request.productName)
