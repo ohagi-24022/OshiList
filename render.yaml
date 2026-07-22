@@ -20,3 +20,5 @@ services:
         value: gemini-2.5-flash
       - key: ALLOWED_ORIGINS
         value: "*"
+      - key: PYTHON_VERSION
+        value: 3.12.8

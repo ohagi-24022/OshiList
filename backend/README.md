@@ -43,6 +43,9 @@ oshilist-api
 Root Directory:
 backend
 
+Python Version:
+3.12.8
+
 Build Command:
 pip install -r requirements.txt
 
@@ -62,6 +65,7 @@ RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
 ALLOWED_ORIGINS=*
+PYTHON_VERSION=3.12.8
 ```
 
 デプロイ後のURLが `https://oshilist-api.onrender.com` になった場合、楽天Web Serviceのフォームには以下のように入力します。
