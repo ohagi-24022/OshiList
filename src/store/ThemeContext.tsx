@@ -2,8 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
-const THEME_STORAGE_KEY = 'oshilist.theme.v3';
-const CUSTOM_PRESETS_STORAGE_KEY = 'oshilist.customPresets.v1';
+import { normalizeHex } from '../lib/color';
+
+const THEME_STORAGE_KEY = 'oshilist.theme.v4';
+const LEGACY_THEME_STORAGE_KEY = 'oshilist.theme.v3';
+const CUSTOM_PRESETS_STORAGE_KEY = 'oshilist.customPresets.v2';
+const LEGACY_CUSTOM_PRESETS_STORAGE_KEY = 'oshilist.customPresets.v1';
 
 export type ColorRole =
   | 'primary'
@@ -17,6 +21,13 @@ export type ColorRole =
   | 'input'
   | 'success'
   | 'danger';
+
+export type CharacterAccent = {
+  id: string;
+  seriesName: string;
+  characterName: string;
+  color: string;
+};
 
 export type ThemePreset = {
   id: string;
@@ -32,10 +43,18 @@ export type ThemePreset = {
   input: string;
   success: string;
   danger: string;
+  characterAccents?: CharacterAccent[];
   custom?: boolean;
 };
 
 export type AppColors = ThemePreset;
+
+type CharacterAccentInput = {
+  id?: string;
+  seriesName: string;
+  characterName: string;
+  color: string;
+};
 
 type ThemeContextValue = {
   colors: AppColors;
@@ -46,6 +65,8 @@ type ThemeContextValue = {
   setCustomColor: (key: ColorRole, value: string) => void;
   saveCurrentAsPreset: (name: string) => Promise<void>;
   deleteCustomPreset: (id: string) => Promise<void>;
+  upsertCharacterAccent: (input: CharacterAccentInput) => void;
+  removeCharacterAccent: (id: string) => void;
 };
 
 const builtInPresets: ThemePreset[] = [
@@ -144,15 +165,40 @@ const darkPreset: ThemePreset = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+function normalizeAccent(input: CharacterAccentInput): CharacterAccent {
+  return {
+    id: input.id || `accent-${Date.now()}`,
+    seriesName: input.seriesName.trim(),
+    characterName: input.characterName.trim(),
+    color: normalizeHex(input.color),
+  };
+}
+
+function asEditableTheme(theme: ThemePreset): ThemePreset {
+  if (theme.custom) return theme;
+  return {
+    ...theme,
+    id: 'draft-custom',
+    name: '編集中のテーマ',
+    custom: true,
+    characterAccents: [],
+  };
+}
+
 export function ThemeProvider({ children }: PropsWithChildren) {
   const systemMode = useColorScheme();
   const [theme, setTheme] = useState<ThemePreset>(() => (systemMode === 'dark' ? darkPreset : builtInPresets[0]));
   const [customPresets, setCustomPresets] = useState<ThemePreset[]>([]);
 
   useEffect(() => {
-    AsyncStorage.multiGet([THEME_STORAGE_KEY, CUSTOM_PRESETS_STORAGE_KEY]).then((entries) => {
-      const storedTheme = entries[0][1];
-      const storedCustomPresets = entries[1][1];
+    AsyncStorage.multiGet([
+      THEME_STORAGE_KEY,
+      LEGACY_THEME_STORAGE_KEY,
+      CUSTOM_PRESETS_STORAGE_KEY,
+      LEGACY_CUSTOM_PRESETS_STORAGE_KEY,
+    ]).then((entries) => {
+      const storedTheme = entries[0][1] ?? entries[1][1];
+      const storedCustomPresets = entries[2][1] ?? entries[3][1];
       if (storedCustomPresets) {
         setCustomPresets(JSON.parse(storedCustomPresets) as ThemePreset[]);
       }
@@ -167,6 +213,20 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     AsyncStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(nextTheme));
   };
 
+  const persistCustomPresets = async (nextPresets: ThemePreset[]) => {
+    setCustomPresets(nextPresets);
+    await AsyncStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+  };
+
+  const updateTheme = (nextTheme: ThemePreset) => {
+    persistTheme(nextTheme);
+    if (nextTheme.custom && nextTheme.id !== 'draft-custom') {
+      const nextPresets = customPresets.map((preset) => (preset.id === nextTheme.id ? nextTheme : preset));
+      setCustomPresets(nextPresets);
+      AsyncStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+    }
+  };
+
   const saveCurrentAsPreset = async (name: string) => {
     const presetName = name.trim() || 'マイテーマ';
     const nextPreset: ThemePreset = {
@@ -174,21 +234,45 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       id: `custom-${Date.now()}`,
       name: presetName,
       custom: true,
+      characterAccents: theme.characterAccents ?? [],
     };
     const nextPresets = [nextPreset, ...customPresets];
-    setCustomPresets(nextPresets);
-    await AsyncStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+    await persistCustomPresets(nextPresets);
     persistTheme(nextPreset);
   };
 
   const deleteCustomPreset = async (id: string) => {
     const nextPresets = customPresets.filter((preset) => preset.id !== id);
-    setCustomPresets(nextPresets);
-    await AsyncStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+    await persistCustomPresets(nextPresets);
 
     if (theme.id === id) {
       persistTheme(builtInPresets[0]);
     }
+  };
+
+  const upsertCharacterAccent = (input: CharacterAccentInput) => {
+    const accent = normalizeAccent(input);
+    if (!accent.seriesName || !accent.characterName) return;
+
+    const editableTheme = asEditableTheme(theme);
+    const accents = editableTheme.characterAccents ?? [];
+    const existingIndex = accents.findIndex(
+      (item) =>
+        item.id === accent.id ||
+        (item.seriesName === accent.seriesName && item.characterName === accent.characterName),
+    );
+    const nextAccents =
+      existingIndex >= 0
+        ? accents.map((item, index) => (index === existingIndex ? { ...accent, id: item.id } : item))
+        : [accent, ...accents];
+
+    updateTheme({ ...editableTheme, characterAccents: nextAccents });
+  };
+
+  const removeCharacterAccent = (id: string) => {
+    const editableTheme = asEditableTheme(theme);
+    const nextAccents = (editableTheme.characterAccents ?? []).filter((accent) => accent.id !== id);
+    updateTheme({ ...editableTheme, characterAccents: nextAccents });
   };
 
   const value = useMemo<ThemeContextValue>(
@@ -198,9 +282,11 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       builtInPresets,
       customPresets,
       setPreset: persistTheme,
-      setCustomColor: (key, value) => persistTheme({ ...theme, id: 'draft-custom', name: '編集中のテーマ', [key]: value }),
+      setCustomColor: (key, value) => updateTheme({ ...asEditableTheme(theme), [key]: value }),
       saveCurrentAsPreset,
       deleteCustomPreset,
+      upsertCharacterAccent,
+      removeCharacterAccent,
     }),
     [customPresets, theme],
   );

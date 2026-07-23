@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { getCharacterAccentColor } from '../lib/characterAccent';
 import { isOshiGoods } from '../lib/oshi';
 import { useProfile } from '../store/ProfileContext';
 import { useAppTheme } from '../store/ThemeContext';
@@ -27,8 +28,10 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
   const { profile } = useProfile();
   const isManage = mode === 'manage';
   const markedAsOshi = isOshiGoods(item, profile);
+  const characterColor = getCharacterAccentColor(item, colors);
   const markColor = profile.markColor || colors.primary;
   const markIcon = (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap;
+  const accentColor = markedAsOshi ? markColor : characterColor;
 
   return (
     <Pressable
@@ -38,7 +41,7 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         styles.card,
         {
           backgroundColor: colors.surface,
-          borderColor: markedAsOshi ? markColor : colors.border,
+          borderColor: accentColor ?? colors.border,
           opacity: pressed ? 0.75 : 1,
         },
       ]}
@@ -77,7 +80,7 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
           {item.seriesName}
         </Text>
         <View style={styles.characterRow}>
-          <Text numberOfLines={1} style={[styles.character, { color: markedAsOshi ? markColor : colors.text }]}>
+          <Text numberOfLines={1} style={[styles.character, { color: accentColor ?? colors.text }]}>
             {item.characterName}
           </Text>
           {markedAsOshi ? (
@@ -92,14 +95,14 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         </Text>
         <View style={styles.footer}>
           <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
-            <View style={[styles.dot, { backgroundColor: colors.secondary }]} />
+            <View style={[styles.dot, { backgroundColor: characterColor ?? colors.secondary }]} />
             <Text style={[styles.statusText, { color: colors.muted }]}>{statusLabels[item.status]}</Text>
           </View>
           {isManage && onDecrease && onIncrease ? (
             <CounterButton quantity={item.quantity} onDecrease={onDecrease} onIncrease={onIncrease} />
           ) : (
-            <View style={[styles.quantityBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.quantityText}>{item.quantity}点</Text>
+            <View style={[styles.quantityBadge, { backgroundColor: characterColor ?? colors.primary }]}>
+              <Text style={styles.quantityText}>{item.quantity}個</Text>
             </View>
           )}
         </View>

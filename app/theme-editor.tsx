@@ -1,18 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { hexToHsl, hslToHex, HslColor, normalizeHex } from '../src/lib/color';
-import { ColorRole, useAppTheme } from '../src/store/ThemeContext';
+import { useGoods } from '../src/store/GoodsContext';
+import { CharacterAccent, ColorRole, useAppTheme } from '../src/store/ThemeContext';
 
 const colorRoles: Array<[ColorRole, string, string]> = [
   ['primary', 'メイン', '主要ボタンや選択中の色'],
   ['secondary', 'アクセント', 'バッジや小さな強調色'],
   ['background', '背景', '画面全体の背景'],
   ['surface', 'カード', 'カードやパネルの背景'],
-  ['elevated', '淡い面', '入力周辺や補助エリア'],
+  ['elevated', '浮いた面', '入力欄周辺や装飾エリア'],
   ['input', '入力欄', '検索欄やフォーム'],
   ['text', '本文', '主要な文字'],
   ['muted', '補助文字', '説明文やメタ情報'],
@@ -23,14 +24,38 @@ const colorRoles: Array<[ColorRole, string, string]> = [
 
 const hueStops = [0, 30, 60, 120, 200, 270, 320];
 const percentStops = [0, 25, 50, 75, 100];
+const accentColorOptions = ['#e94f7d', '#f5a400', '#7b61ff', '#00a7b5', '#31c759', '#111111'];
 
 export default function ThemeEditorScreen() {
-  const { colors, setCustomColor, saveCurrentAsPreset } = useAppTheme();
+  const { colors, setCustomColor, saveCurrentAsPreset, upsertCharacterAccent, removeCharacterAccent } = useAppTheme();
+  const { goods } = useGoods();
   const [selectedRole, setSelectedRole] = useState<ColorRole>('primary');
   const [presetName, setPresetName] = useState('');
+  const [accentSeries, setAccentSeries] = useState('');
+  const [accentCharacter, setAccentCharacter] = useState('');
+  const [accentColor, setAccentColor] = useState(colors.primary);
 
   const selectedHex = colors[selectedRole];
   const selectedHsl = useMemo(() => hexToHsl(selectedHex), [selectedHex]);
+  const characterAccents = colors.custom ? colors.characterAccents ?? [] : [];
+  const canUseCharacterAccents = !!colors.custom;
+
+  useEffect(() => {
+    setAccentColor(colors.primary);
+  }, [colors.primary]);
+
+  const characterSuggestions = useMemo(() => {
+    const pairs = new Map<string, { seriesName: string; characterName: string }>();
+    goods.forEach((item) => {
+      const seriesName = item.seriesName.trim();
+      const characterName = item.characterName.trim();
+      if (!seriesName || !characterName || characterName === '未分類') return;
+      pairs.set(`${seriesName}::${characterName}`, { seriesName, characterName });
+    });
+    return Array.from(pairs.values()).sort((a, b) =>
+      `${a.seriesName}${a.characterName}`.localeCompare(`${b.seriesName}${b.characterName}`, 'ja'),
+    );
+  }, [goods]);
 
   const updateHsl = (patch: Partial<HslColor>) => {
     setCustomColor(selectedRole, hslToHex({ ...selectedHsl, ...patch }));
@@ -49,6 +74,31 @@ export default function ThemeEditorScreen() {
     setPresetName('');
   };
 
+  const selectSuggestion = (seriesName: string, characterName: string) => {
+    setAccentSeries(seriesName);
+    setAccentCharacter(characterName);
+  };
+
+  const saveCharacterAccent = () => {
+    if (!accentSeries.trim() || !accentCharacter.trim()) {
+      Alert.alert('シリーズとキャラクターを入力してください', 'キャラクター別カラーはシリーズ名とキャラクター名の組み合わせで保存します。');
+      return;
+    }
+    upsertCharacterAccent({
+      seriesName: accentSeries,
+      characterName: accentCharacter,
+      color: accentColor,
+    });
+    setAccentCharacter('');
+    Alert.alert('追加しました', 'このテーマ内でキャラクター別カラーを反映します。');
+  };
+
+  const editCharacterAccent = (accent: CharacterAccent) => {
+    setAccentSeries(accent.seriesName);
+    setAccentCharacter(accent.characterName);
+    setAccentColor(accent.color);
+  };
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
@@ -57,11 +107,11 @@ export default function ThemeEditorScreen() {
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text style={[styles.title, { color: colors.text }]}>テーマデザイン</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>大きなボタンで色を調整できます。</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>全体配色と、シリーズ内のキャラクター色を調整できます。</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={[styles.previewPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.previewHeader, { backgroundColor: colors.elevated }]}>
             <View>
@@ -72,13 +122,15 @@ export default function ThemeEditorScreen() {
               <Text style={styles.previewBadgeText}>所持</Text>
             </View>
           </View>
-          <View style={[styles.previewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.previewCard, { backgroundColor: colors.surface, borderColor: accentColor || colors.border }]}>
             <View style={[styles.previewImage, { backgroundColor: colors.input }]}>
               <Ionicons color={colors.secondary} name="image-outline" size={26} />
             </View>
             <View style={styles.previewBody}>
               <Text style={[styles.previewGoodsTitle, { color: colors.text }]}>トレーディング缶バッジ</Text>
-              <Text style={[styles.previewGoodsMeta, { color: colors.muted }]}>酒寄彩葉 / ホログラム仕様</Text>
+              <Text style={[styles.previewGoodsMeta, { color: accentColor || colors.muted }]}>
+                {accentCharacter.trim() || 'キャラクター'} / ホログラム仕様
+              </Text>
               <View style={[styles.previewCounter, { backgroundColor: colors.elevated }]}>
                 <Text style={[styles.previewCounterText, { color: colors.text }]}>- 2 +</Text>
               </View>
@@ -154,6 +206,109 @@ export default function ThemeEditorScreen() {
         </View>
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.panelTitle, { color: colors.text }]}>キャラクター別カラー</Text>
+          <Text style={[styles.panelHelp, { color: colors.muted }]}>
+            自作テーマの中だけで、シリーズとキャラクターの組み合わせに色を割り当てます。
+          </Text>
+          {!canUseCharacterAccents ? (
+            <View style={[styles.notice, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              <Ionicons color={colors.primary} name="information-circle-outline" size={19} />
+              <Text style={[styles.noticeText, { color: colors.muted }]}>
+                まず全体色を編集するか、現在の配色をプリセット保存すると利用できます。
+              </Text>
+            </View>
+          ) : null}
+
+          {!!characterSuggestions.length && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionRow}>
+              {characterSuggestions.map((item) => (
+                <Pressable
+                  key={`${item.seriesName}-${item.characterName}`}
+                  onPress={() => selectSuggestion(item.seriesName, item.characterName)}
+                  style={[styles.suggestionChip, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+                >
+                  <Text numberOfLines={1} style={[styles.suggestionSeries, { color: colors.muted }]}>
+                    {item.seriesName}
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.text }]}>
+                    {item.characterName}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+
+          <Text style={[styles.formLabel, { color: colors.muted }]}>シリーズ</Text>
+          <TextInput
+            value={accentSeries}
+            onChangeText={setAccentSeries}
+            placeholder="作品名・シリーズ名"
+            placeholderTextColor={colors.muted}
+            style={[styles.nameInput, { backgroundColor: colors.input, color: colors.text }]}
+          />
+          <Text style={[styles.formLabel, { color: colors.muted }]}>キャラクター</Text>
+          <TextInput
+            value={accentCharacter}
+            onChangeText={setAccentCharacter}
+            placeholder="キャラクター名"
+            placeholderTextColor={colors.muted}
+            style={[styles.nameInput, { backgroundColor: colors.input, color: colors.text }]}
+          />
+          <View style={styles.accentColorLine}>
+            <View style={[styles.selectedChip, { backgroundColor: accentColor, borderColor: colors.border }]} />
+            <TextInput
+              value={accentColor}
+              onChangeText={(value) => setAccentColor(normalizeHex(value))}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[styles.accentHexInput, { backgroundColor: colors.input, color: colors.text }]}
+            />
+          </View>
+          <View style={styles.accentSwatches}>
+            {accentColorOptions.map((color) => (
+              <Pressable
+                key={color}
+                accessibilityLabel={`${color}をキャラクター色に設定`}
+                onPress={() => setAccentColor(color)}
+                style={[
+                  styles.accentSwatch,
+                  { backgroundColor: color, borderColor: accentColor.toLowerCase() === color.toLowerCase() ? colors.text : colors.border },
+                ]}
+              />
+            ))}
+          </View>
+          <Pressable
+            disabled={!canUseCharacterAccents}
+            onPress={saveCharacterAccent}
+            style={[styles.addAccentButton, { backgroundColor: canUseCharacterAccents ? colors.primary : colors.border }]}
+          >
+            <Ionicons color="#ffffff" name="color-palette-outline" size={18} />
+            <Text style={styles.saveText}>このキャラ色を追加</Text>
+          </Pressable>
+
+          {!!characterAccents.length && (
+            <View style={styles.accentList}>
+              {characterAccents.map((accent) => (
+                <View key={accent.id} style={[styles.accentItem, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                  <View style={[styles.accentItemColor, { backgroundColor: accent.color }]} />
+                  <Pressable onPress={() => editCharacterAccent(accent)} style={styles.accentItemText}>
+                    <Text numberOfLines={1} style={[styles.accentItemName, { color: colors.text }]}>
+                      {accent.characterName}
+                    </Text>
+                    <Text numberOfLines={1} style={[styles.accentItemSeries, { color: colors.muted }]}>
+                      {accent.seriesName}
+                    </Text>
+                  </Pressable>
+                  <Pressable accessibilityLabel={`${accent.characterName}の色を削除`} onPress={() => removeCharacterAccent(accent.id)} style={styles.deleteButton}>
+                    <Ionicons color={colors.danger} name="trash-outline" size={18} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>プリセットに保存</Text>
           <TextInput
             value={presetName}
@@ -164,7 +319,7 @@ export default function ThemeEditorScreen() {
           />
           <Pressable onPress={savePreset} style={[styles.saveButton, { backgroundColor: colors.primary }]}>
             <Ionicons color="#ffffff" name="bookmark-outline" size={18} />
-            <Text style={styles.saveText}>現在の配色を保存</Text>
+            <Text style={styles.saveText}>現在のデザインを保存</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -306,7 +461,7 @@ const styles = StyleSheet.create({
   previewImage: { alignItems: 'center', borderRadius: 6, height: 74, justifyContent: 'center', width: 56 },
   previewBody: { flex: 1 },
   previewGoodsTitle: { fontSize: 14, fontWeight: '900' },
-  previewGoodsMeta: { fontSize: 12, marginTop: 5 },
+  previewGoodsMeta: { fontSize: 12, fontWeight: '800', marginTop: 5 },
   previewCounter: { alignItems: 'center', borderRadius: 8, height: 28, justifyContent: 'center', marginTop: 10, width: 82 },
   previewCounterText: { fontSize: 13, fontWeight: '900' },
   roleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
@@ -351,7 +506,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   percentText: { fontSize: 13, fontWeight: '900' },
+  notice: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    padding: 10,
+  },
+  noticeText: { flex: 1, fontSize: 12, lineHeight: 17 },
+  suggestionRow: { gap: 8, paddingTop: 12 },
+  suggestionChip: {
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 58,
+    paddingHorizontal: 12,
+    width: 148,
+  },
+  suggestionSeries: { fontSize: 10, fontWeight: '800' },
+  suggestionName: { fontSize: 13, fontWeight: '900', marginTop: 3 },
+  formLabel: { fontSize: 12, fontWeight: '800', marginBottom: 7, marginTop: 12 },
   nameInput: { borderRadius: 8, fontSize: 15, height: 44, marginTop: 12, paddingHorizontal: 12 },
+  accentColorLine: { alignItems: 'center', flexDirection: 'row', gap: 10, marginTop: 12 },
+  accentHexInput: { borderRadius: 8, flex: 1, fontSize: 15, height: 46, paddingHorizontal: 12 },
+  accentSwatches: { flexDirection: 'row', gap: 9, marginTop: 10 },
+  accentSwatch: { borderRadius: 999, borderWidth: 3, height: 36, width: 36 },
+  addAccentButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  accentList: { gap: 8, marginTop: 14 },
+  accentItem: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 58,
+    paddingHorizontal: 10,
+  },
+  accentItemColor: { borderRadius: 999, height: 28, width: 28 },
+  accentItemText: { flex: 1, justifyContent: 'center', minHeight: 58 },
+  accentItemName: { fontSize: 14, fontWeight: '900' },
+  accentItemSeries: { fontSize: 11, fontWeight: '800', marginTop: 2 },
+  deleteButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 44 },
   saveButton: {
     alignItems: 'center',
     borderRadius: 8,

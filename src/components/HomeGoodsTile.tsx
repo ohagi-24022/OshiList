@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
+import { getCharacterAccentColor } from '../lib/characterAccent';
 import { isOshiGoods } from '../lib/oshi';
 import { useProfile } from '../store/ProfileContext';
 import { useAppTheme } from '../store/ThemeContext';
@@ -14,11 +15,13 @@ export function HomeGoodsTile({ item }: Props) {
   const { colors } = useAppTheme();
   const { profile } = useProfile();
   const markedAsOshi = isOshiGoods(item, profile);
+  const characterColor = getCharacterAccentColor(item, colors);
   const markColor = profile.markColor || colors.primary;
   const markIcon = (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap;
+  const accentColor = markedAsOshi ? markColor : characterColor;
 
   return (
-    <View style={[styles.tile, { backgroundColor: colors.surface, borderColor: markedAsOshi ? markColor : colors.border }]}>
+    <View style={[styles.tile, { backgroundColor: colors.surface, borderColor: accentColor ?? colors.border }]}>
       <View style={[styles.imageWrap, { backgroundColor: colors.elevated }]}>
         {item.imageUrl ? (
           <Image source={{ uri: item.imageUrl }} style={styles.image} />
@@ -31,7 +34,7 @@ export function HomeGoodsTile({ item }: Props) {
             <Text style={styles.oshiText}>推し</Text>
           </View>
         ) : null}
-        <View style={[styles.quantityBadge, { backgroundColor: colors.primary }]}>
+        <View style={[styles.quantityBadge, { backgroundColor: characterColor ?? colors.primary }]}>
           <Text style={styles.quantityText}>{item.quantity}個</Text>
         </View>
       </View>
@@ -41,7 +44,7 @@ export function HomeGoodsTile({ item }: Props) {
       <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
         {item.boxName}
       </Text>
-      <Text numberOfLines={1} style={[styles.meta, { color: markedAsOshi ? markColor : colors.muted }]}>
+      <Text numberOfLines={1} style={[styles.meta, { color: accentColor ?? colors.muted }]}>
         {item.characterName} / {item.variantName}
       </Text>
     </View>
