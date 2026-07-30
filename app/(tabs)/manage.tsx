@@ -4,9 +4,9 @@ import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  GestureResponderEvent,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -27,6 +27,7 @@ export default function ManageScreen() {
   const { colors } = useAppTheme();
   const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
+  const detailTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Goods | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -51,16 +52,27 @@ export default function ManageScreen() {
   useScrollToTop(listRef);
 
   const closeDetail = () => setSelected(null);
-  const detailSwipeResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => gesture.dx < -20 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx < -80 && Math.abs(gesture.vx) > 0.15) {
-          closeDetail();
-        }
-      },
-    }),
-  ).current;
+  const rememberDetailTouchStart = (event: GestureResponderEvent) => {
+    detailTouchStartRef.current = {
+      x: event.nativeEvent.pageX,
+      y: event.nativeEvent.pageY,
+      time: Date.now(),
+    };
+  };
+  const closeDetailOnLeftSwipe = (event: GestureResponderEvent) => {
+    const start = detailTouchStartRef.current;
+    detailTouchStartRef.current = null;
+    if (!start) return;
+
+    const dx = event.nativeEvent.pageX - start.x;
+    const dy = event.nativeEvent.pageY - start.y;
+    const elapsed = Date.now() - start.time;
+    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
+    const fastEnough = elapsed < 700;
+    if (dx < -64 && horizontal && fastEnough) {
+      closeDetail();
+    }
+  };
 
   const toggleSelectionMode = () => {
     setSelectionMode((current) => {
@@ -274,7 +286,11 @@ export default function ManageScreen() {
       </Modal>
 
       <Modal animationType="slide" visible={!!selectedItem} onRequestClose={closeDetail}>
-        <SafeAreaView style={[styles.modalScreen, { backgroundColor: colors.background }]} {...detailSwipeResponder.panHandlers}>
+        <SafeAreaView
+          onTouchEnd={closeDetailOnLeftSwipe}
+          onTouchStart={rememberDetailTouchStart}
+          style={[styles.modalScreen, { backgroundColor: colors.background }]}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
@@ -287,7 +303,13 @@ export default function ManageScreen() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>グッズ詳細編集</Text>
               <View style={styles.closeButton} />
             </View>
-            <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              onTouchEnd={closeDetailOnLeftSwipe}
+              onTouchStart={rememberDetailTouchStart}
+              showsVerticalScrollIndicator={false}
+            >
               {selectedItem ? (
                 <GoodsEditForm
                   item={selectedItem}
