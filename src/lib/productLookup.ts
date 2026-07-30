@@ -37,6 +37,8 @@ type ReceiptApiResponse = Partial<{
 }>;
 
 const LOOKUP_API_URL = process.env.EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL;
+const DEFAULT_TIMEOUT_MS = 30000;
+const RECEIPT_TIMEOUT_MS = 60000;
 
 function readErrorMessage(payload: unknown) {
   if (payload && typeof payload === 'object' && 'detail' in payload) {
@@ -55,6 +57,22 @@ function apiBaseUrl() {
   return LOOKUP_API_URL.replace(/\/lookup(?:\?.*)?$/, '');
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer: ReturnType<typeof setTimeout> = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('通信がタイムアウトしました。時間をおいて再度お試しください。');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function lookupProductByJan(janCode: string): Promise<ProductLookupResult> {
   const normalizedJan = janCode.trim();
   if (!/^\d{8,14}$/.test(normalizedJan)) {
@@ -65,7 +83,7 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
     throw new Error('オフラインのため商品情報を取得できません。手動登録に切り替えてください。');
   }
 
-  const response = await fetch(`${apiBaseUrl()}/lookup?jan=${encodeURIComponent(normalizedJan)}`);
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup?jan=${encodeURIComponent(normalizedJan)}`);
   const payload = (await response.json().catch(() => null)) as LookupApiResponse | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));
@@ -98,11 +116,15 @@ export async function parseReceiptImage(imageBase64: string, mimeType = 'image/j
     throw new Error('オフラインのため領収書を解析できません。手動登録に切り替えてください。');
   }
 
-  const response = await fetch(`${apiBaseUrl()}/receipt/parse`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64, mimeType }),
-  });
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl()}/receipt/parse`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64, mimeType }),
+    },
+    RECEIPT_TIMEOUT_MS,
+  );
   const payload = (await response.json().catch(() => null)) as ReceiptApiResponse | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));
@@ -137,7 +159,7 @@ export async function searchProductsByName(query: string, limit = 5): Promise<Pr
     throw new Error('オフラインのため画像候補を取得できません。');
   }
 
-  const response = await fetch(`${apiBaseUrl()}/search?q=${encodeURIComponent(normalizedQuery)}&limit=${limit}`);
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/search?q=${encodeURIComponent(normalizedQuery)}&limit=${limit}`);
   const payload = (await response.json().catch(() => null)) as ProductCandidateApiResponse[] | { detail?: string } | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));

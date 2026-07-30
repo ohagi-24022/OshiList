@@ -38,6 +38,7 @@ export default function ScanScreen() {
   const [manualJan, setManualJan] = useState('');
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [receiptStatus, setReceiptStatus] = useState('');
   const [statusMessage, setStatusMessage] = useState('枠内にJANコードを合わせてください。');
   const [result, setResult] = useState<ProductLookupResult | null>(null);
   const [receiptResult, setReceiptResult] = useState<ReceiptParseResult | null>(null);
@@ -85,6 +86,7 @@ export default function ScanScreen() {
   };
 
   const readReceiptImage = async (source: ReceiptSource) => {
+    setReceiptStatus(source === 'camera' ? 'カメラを起動中...' : '写真ライブラリを開いています...');
     if (source === 'camera') {
       await requestPhotoCameraPermission();
     } else {
@@ -101,13 +103,14 @@ export default function ScanScreen() {
 
     const pickerResult =
       source === 'camera'
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85, base64: true })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85, base64: true });
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.65, base64: true })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.65, base64: true });
 
     if (pickerResult.canceled || !pickerResult.assets[0]) {
       return null;
     }
 
+    setReceiptStatus('画像を準備中...');
     const asset = pickerResult.assets[0];
     const imageBase64 =
       asset.base64 ??
@@ -123,9 +126,11 @@ export default function ScanScreen() {
 
   const analyzeReceipt = async (source: ReceiptSource) => {
     setLoading(true);
+    setReceiptStatus('');
     try {
       const image = await readReceiptImage(source);
       if (!image) return;
+      setReceiptStatus('領収書を解析中...');
       const parsed = await parseReceiptImage(image.imageBase64, image.mimeType);
       setReceiptResult(parsed);
       if (!parsed.items.length) {
@@ -134,6 +139,7 @@ export default function ScanScreen() {
     } catch (error) {
       Alert.alert('領収書を解析できませんでした', error instanceof Error ? error.message : 'もう一度お試しください。');
     } finally {
+      setReceiptStatus('');
       setLoading(false);
     }
   };
@@ -277,6 +283,7 @@ export default function ScanScreen() {
                   <Text style={[styles.secondaryReceiptText, { color: colors.text }]}>写真から選択</Text>
                 </Pressable>
               </View>
+              {!!receiptStatus && <Text style={[styles.receiptStatus, { color: colors.muted }]}>{receiptStatus}</Text>}
             </View>
           )}
 
@@ -584,6 +591,7 @@ const styles = StyleSheet.create({
   receiptTitle: { fontSize: 19, fontWeight: '900' },
   receiptText: { fontSize: 13, lineHeight: 19, marginTop: 8, textAlign: 'center' },
   receiptActions: { gap: 10, marginTop: 16, width: '100%' },
+  receiptStatus: { fontSize: 12, fontWeight: '800', lineHeight: 18, marginTop: 12, textAlign: 'center' },
   receiptButton: {
     alignItems: 'center',
     borderRadius: 8,
