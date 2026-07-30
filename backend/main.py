@@ -20,7 +20,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
-RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
+RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701"
 
 
 def normalize_gemini_model(value: str | None) -> str:
@@ -194,6 +194,37 @@ def first_rakuten_image_url(item: dict[str, Any]) -> str | None:
     return image_url.replace("?_ex=128x128", "") if isinstance(image_url, str) else None
 
 
+def rakuten_error_message(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return f"Rakuten Item Search API request failed. Status={response.status_code}"
+    description = payload.get("error_description") or payload.get("error")
+    if isinstance(description, str) and description:
+        return f"Rakuten Item Search API request failed. Status={response.status_code}: {description}"
+    return f"Rakuten Item Search API request failed. Status={response.status_code}"
+
+
+def is_valid_rakuten_keyword(query: str) -> bool:
+    words = [word for word in re.split(r"\s+", query.strip()) if word]
+    if not words:
+        return False
+
+    for word in words:
+        if re.search(r"[\u3040-\u30ffー]", word) and len(word) < 2:
+            return False
+        if word.isascii() and len(word) < 2:
+            return False
+    return True
+
+
+def rakuten_item_from_wrapper(wrapper: dict[str, Any]) -> dict[str, Any]:
+    item = wrapper.get("Item")
+    if isinstance(item, dict):
+        return item
+    return wrapper
+
+
 async def search_yahoo_item(jan: str) -> ProductCandidate:
     if not YAHOO_APP_ID:
         raise HTTPException(status_code=503, detail="YAHOO_APP_IDが未設定です。")
@@ -227,10 +258,17 @@ async def search_yahoo_item(jan: str) -> ProductCandidate:
 async def search_rakuten_item(jan: str) -> ProductCandidate:
     if not RAKUTEN_APP_ID:
         raise HTTPException(status_code=503, detail="RAKUTEN_APP_IDが未設定です。")
+    if not RAKUTEN_ACCESS_KEY:
+        raise HTTPException(status_code=503, detail="RAKUTEN_ACCESS_KEY is not configured.")
 
-    params = {"applicationId": RAKUTEN_APP_ID, "keyword": jan, "hits": 1, "format": "json"}
-    if RAKUTEN_ACCESS_KEY:
-        params["accessKey"] = RAKUTEN_ACCESS_KEY
+    params = {
+        "applicationId": RAKUTEN_APP_ID,
+        "accessKey": RAKUTEN_ACCESS_KEY,
+        "keyword": jan,
+        "hits": 1,
+        "format": "json",
+        "formatVersion": 2,
+    }
 
     try:
         async with httpx.AsyncClient(timeout=12) as client:
@@ -239,13 +277,13 @@ async def search_rakuten_item(jan: str) -> ProductCandidate:
         raise HTTPException(status_code=502, detail="楽天商品検索APIへ接続できませんでした。")
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"楽天商品検索APIへのリクエストに失敗しました。status={response.status_code}")
+        raise HTTPException(status_code=502, detail=rakuten_error_message(response))
 
-    items = response.json().get("Items") or []
+    items = response.json().get("Items") or response.json().get("items") or []
     if not items:
         raise HTTPException(status_code=404, detail="楽天市場で商品が見つかりませんでした。")
 
-    item = items[0].get("Item", {})
+    item = rakuten_item_from_wrapper(items[0])
     product_name = item.get("itemName")
     if not product_name:
         raise HTTPException(status_code=404, detail="楽天市場で商品名を取得できませんでした。")
@@ -283,10 +321,19 @@ async def search_yahoo_candidates(query: str, limit: int = 3) -> list[ProductCan
 async def search_rakuten_candidates(query: str, limit: int = 3) -> list[ProductCandidate]:
     if not RAKUTEN_APP_ID:
         raise HTTPException(status_code=503, detail="RAKUTEN_APP_ID is not configured.")
+    if not RAKUTEN_ACCESS_KEY:
+        raise HTTPException(status_code=503, detail="RAKUTEN_ACCESS_KEY is not configured.")
+    if not is_valid_rakuten_keyword(query):
+        raise HTTPException(status_code=400, detail="Rakuten keyword is too short.")
 
-    params = {"applicationId": RAKUTEN_APP_ID, "keyword": query, "hits": limit, "format": "json"}
-    if RAKUTEN_ACCESS_KEY:
-        params["accessKey"] = RAKUTEN_ACCESS_KEY
+    params = {
+        "applicationId": RAKUTEN_APP_ID,
+        "accessKey": RAKUTEN_ACCESS_KEY,
+        "keyword": query,
+        "hits": limit,
+        "format": "json",
+        "formatVersion": 2,
+    }
 
     try:
         async with httpx.AsyncClient(timeout=12) as client:
@@ -295,11 +342,11 @@ async def search_rakuten_candidates(query: str, limit: int = 3) -> list[ProductC
         raise HTTPException(status_code=502, detail="Could not connect to Rakuten Item Search API.")
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Rakuten Item Search API request failed. Status={response.status_code}")
+        raise HTTPException(status_code=502, detail=rakuten_error_message(response))
 
     candidates: list[ProductCandidate] = []
-    for wrapper in response.json().get("Items") or []:
-        item = wrapper.get("Item", {})
+    for wrapper in response.json().get("Items") or response.json().get("items") or []:
+        item = rakuten_item_from_wrapper(wrapper)
         product_name = item.get("itemName")
         if not product_name:
             continue
@@ -323,6 +370,8 @@ async def search_product_candidates(query: str, provider: str = "auto", limit: i
                 warnings.append(f"Unsupported provider: {current_provider}")
                 continue
         except HTTPException as exc:
+            if current_provider == "rakuten" and exc.status_code == 400 and "too short" in str(exc.detail):
+                continue
             warnings.append(f"{current_provider}: {exc.detail}")
             continue
 

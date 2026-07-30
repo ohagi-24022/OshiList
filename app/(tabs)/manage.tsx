@@ -23,9 +23,14 @@ import { Goods } from '../../src/types';
 
 export default function ManageScreen() {
   const { colors } = useAppTheme();
-  const { goods, loading, removeGoods, updateGoods, updateQuantity } = useGoods();
+  const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Goods | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkModalVisible, setBulkModalVisible] = useState(false);
+  const [bulkSeriesName, setBulkSeriesName] = useState('');
+  const [bulkCharacterName, setBulkCharacterName] = useState('');
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -36,6 +41,57 @@ export default function ManageScreen() {
   }, [goods, query]);
 
   const selectedItem = selected ? goods.find((item) => item.id === selected.id) ?? selected : null;
+  const selectedCount = selectedIds.size;
+  const selectedGoods = useMemo(() => goods.filter((item) => selectedIds.has(item.id)), [goods, selectedIds]);
+  const seriesSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.seriesName)), [goods]);
+  const characterSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.characterName)), [goods]);
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((current) => {
+      const next = !current;
+      if (current) {
+        setSelectedIds(new Set());
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectedId = (id: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const openBulkModal = () => {
+    if (!selectedCount) {
+      Alert.alert('グッズを選択してください', 'まとめて編集したいグッズを選択してください。');
+      return;
+    }
+    setBulkModalVisible(true);
+  };
+
+  const saveBulkUpdate = async () => {
+    const patch: { seriesName?: string; characterName?: string } = {};
+    if (bulkSeriesName.trim()) patch.seriesName = bulkSeriesName;
+    if (bulkCharacterName.trim()) patch.characterName = bulkCharacterName;
+    if (!patch.seriesName && !patch.characterName) {
+      Alert.alert('入力してください', 'シリーズまたはキャラクターのどちらかを入力してください。');
+      return;
+    }
+
+    await bulkUpdateGoods(Array.from(selectedIds), patch);
+    setBulkModalVisible(false);
+    setBulkSeriesName('');
+    setBulkCharacterName('');
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  };
 
   const confirmRemove = (item: Goods) => {
     Alert.alert('グッズを削除しますか？', `${item.characterName} / ${item.variantName}`, [
@@ -48,6 +104,11 @@ export default function ManageScreen() {
           if (selected?.id === item.id) {
             setSelected(null);
           }
+          setSelectedIds((current) => {
+            const next = new Set(current);
+            next.delete(item.id);
+            return next;
+          });
         },
       },
     ]);
@@ -60,13 +121,18 @@ export default function ManageScreen() {
           <View>
             <Text style={[styles.title, { color: colors.text }]}>管理</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : `登録済み ${goods.length}種類`}
+              {loading ? '読み込み中' : selectionMode ? `${selectedCount}件選択中` : `登録済み ${goods.length}種類`}
             </Text>
           </View>
-          <View style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <Ionicons color={colors.primary} name="create-outline" size={18} />
-            <Text style={[styles.summaryText, { color: colors.text }]}>詳細編集</Text>
-          </View>
+          <Pressable
+            onPress={toggleSelectionMode}
+            style={[styles.modeButton, { borderColor: colors.border, backgroundColor: selectionMode ? colors.primary : colors.surface }]}
+          >
+            <Ionicons color={selectionMode ? '#ffffff' : colors.primary} name={selectionMode ? 'close' : 'checkbox-outline'} size={18} />
+            <Text style={[styles.modeButtonText, { color: selectionMode ? '#ffffff' : colors.text }]}>
+              {selectionMode ? '解除' : '選択'}
+            </Text>
+          </Pressable>
         </View>
         <View style={[styles.searchBox, { backgroundColor: colors.input }]}>
           <Ionicons color={colors.muted} name="search" size={18} />
@@ -79,22 +145,56 @@ export default function ManageScreen() {
             style={[styles.searchInput, { color: colors.text }]}
           />
         </View>
+        {selectionMode ? (
+          <View style={styles.bulkActions}>
+            <Pressable
+              onPress={() => setSelectedIds(new Set(filtered.map((item) => item.id)))}
+              style={[styles.bulkSubButton, { borderColor: colors.border, backgroundColor: colors.surface }]}
+            >
+              <Ionicons color={colors.text} name="checkmark-done-outline" size={17} />
+              <Text style={[styles.bulkSubButtonText, { color: colors.text }]}>表示分を選択</Text>
+            </Pressable>
+            <Pressable
+              onPress={openBulkModal}
+              style={[styles.bulkMainButton, { backgroundColor: selectedCount ? colors.primary : colors.border }]}
+            >
+              <Ionicons color="#ffffff" name="create-outline" size={17} />
+              <Text style={styles.bulkMainButtonText}>まとめて設定</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <FlatList
         contentContainerStyle={styles.listContent}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <GoodsCard
-            item={item}
-            mode="manage"
-            onDecrease={() => updateQuantity(item.id, -1)}
-            onIncrease={() => updateQuantity(item.id, 1)}
-            onPress={() => setSelected(item)}
-            onRemove={() => confirmRemove(item)}
-          />
-        )}
+        renderItem={({ item }) => {
+          const checked = selectedIds.has(item.id);
+          return (
+            <View style={styles.listItem}>
+              {selectionMode ? (
+                <Pressable
+                  accessibilityLabel={`${item.boxName}を選択`}
+                  onPress={() => toggleSelectedId(item.id)}
+                  style={[styles.checkButton, { backgroundColor: checked ? colors.primary : colors.surface, borderColor: checked ? colors.primary : colors.border }]}
+                >
+                  <Ionicons color={checked ? '#ffffff' : colors.muted} name={checked ? 'checkmark' : 'ellipse-outline'} size={20} />
+                </Pressable>
+              ) : null}
+              <View style={styles.cardWrap}>
+                <GoodsCard
+                  item={item}
+                  mode="manage"
+                  onDecrease={() => updateQuantity(item.id, -1)}
+                  onIncrease={() => updateQuantity(item.id, 1)}
+                  onPress={() => (selectionMode ? toggleSelectedId(item.id) : setSelected(item))}
+                  onRemove={() => confirmRemove(item)}
+                />
+              </View>
+            </View>
+          );
+        }}
         ListEmptyComponent={
           <View style={[styles.empty, { borderColor: colors.border }]}>
             <Ionicons color={colors.muted} name="file-tray-outline" size={40} />
@@ -103,6 +203,58 @@ export default function ManageScreen() {
           </View>
         }
       />
+
+      <Modal animationType="slide" transparent visible={bulkModalVisible} onRequestClose={() => setBulkModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.bulkSheet, { backgroundColor: colors.surface }]}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetTitleBlock}>
+                <Text style={[styles.sheetTitle, { color: colors.text }]}>まとめて設定</Text>
+                <Text style={[styles.sheetSubtitle, { color: colors.muted }]}>{selectedCount}件のシリーズ/キャラクターを更新します。</Text>
+              </View>
+              <Pressable onPress={() => setBulkModalVisible(false)} style={styles.closeButton}>
+                <Ionicons color={colors.text} name="close" size={22} />
+              </Pressable>
+            </View>
+
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={[styles.bulkLabel, { color: colors.muted }]}>シリーズ</Text>
+              <TextInput
+                value={bulkSeriesName}
+                onChangeText={setBulkSeriesName}
+                placeholder="空欄なら変更しません"
+                placeholderTextColor={colors.muted}
+                style={[styles.bulkInput, { backgroundColor: colors.input, color: colors.text }]}
+              />
+              <SuggestionRow values={seriesSuggestions} colors={colors} onSelect={setBulkSeriesName} />
+
+              <Text style={[styles.bulkLabel, { color: colors.muted }]}>キャラクター</Text>
+              <TextInput
+                value={bulkCharacterName}
+                onChangeText={setBulkCharacterName}
+                placeholder="空欄なら変更しません"
+                placeholderTextColor={colors.muted}
+                style={[styles.bulkInput, { backgroundColor: colors.input, color: colors.text }]}
+              />
+              <SuggestionRow values={characterSuggestions} colors={colors} onSelect={setBulkCharacterName} />
+
+              {!!selectedGoods.length && (
+                <View style={[styles.previewBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                  <Text style={[styles.previewTitle, { color: colors.text }]}>対象</Text>
+                  <Text style={[styles.previewText, { color: colors.muted }]} numberOfLines={3}>
+                    {selectedGoods.map((item) => item.boxName).join(' / ')}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <Pressable onPress={saveBulkUpdate} style={[styles.saveBulkButton, { backgroundColor: colors.primary }]}>
+              <Ionicons color="#ffffff" name="save-outline" size={18} />
+              <Text style={styles.saveBulkText}>保存</Text>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       <Modal animationType="slide" visible={!!selectedItem} onRequestClose={() => setSelected(null)}>
         <SafeAreaView style={[styles.modalScreen, { backgroundColor: colors.background }]}>
@@ -137,6 +289,37 @@ export default function ManageScreen() {
   );
 }
 
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ja')).slice(0, 12);
+}
+
+function SuggestionRow({
+  values,
+  colors,
+  onSelect,
+}: {
+  values: string[];
+  colors: ReturnType<typeof useAppTheme>['colors'];
+  onSelect: (value: string) => void;
+}) {
+  if (!values.length) return null;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionRow}>
+      {values.map((value) => (
+        <Pressable
+          key={value}
+          onPress={() => onSelect(value)}
+          style={[styles.suggestionChip, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+        >
+          <Text numberOfLines={1} style={[styles.suggestionText, { color: colors.text }]}>
+            {value}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: {
@@ -148,16 +331,16 @@ const styles = StyleSheet.create({
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 12, marginTop: 2 },
-  summaryBadge: {
+  modeButton: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 6,
-    height: 34,
+    height: 36,
     paddingHorizontal: 12,
   },
-  summaryText: { fontSize: 12, fontWeight: '800' },
+  modeButtonText: { fontSize: 12, fontWeight: '900' },
   searchBox: {
     alignItems: 'center',
     borderRadius: 8,
@@ -168,7 +351,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   searchInput: { flex: 1, fontSize: 15 },
+  bulkActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  bulkSubButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 7,
+    height: 42,
+    justifyContent: 'center',
+  },
+  bulkSubButtonText: { fontSize: 13, fontWeight: '900' },
+  bulkMainButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 7,
+    height: 42,
+    justifyContent: 'center',
+  },
+  bulkMainButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
   listContent: { padding: 18, paddingBottom: 96 },
+  listItem: { flexDirection: 'row', gap: 10 },
+  checkButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    marginTop: 45,
+    width: 36,
+  },
+  cardWrap: { flex: 1 },
   empty: {
     alignItems: 'center',
     borderRadius: 8,
@@ -179,6 +395,38 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 17, fontWeight: '900', marginTop: 12 },
   emptyText: { fontSize: 13, lineHeight: 19, marginTop: 8, textAlign: 'center' },
+  modalBackdrop: { backgroundColor: 'rgba(0,0,0,0.36)', flex: 1, justifyContent: 'flex-end' },
+  bulkSheet: { borderTopLeftRadius: 8, borderTopRightRadius: 8, maxHeight: '86%', padding: 18 },
+  sheetHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  sheetTitleBlock: { flex: 1 },
+  sheetTitle: { fontSize: 22, fontWeight: '900' },
+  sheetSubtitle: { fontSize: 12, marginTop: 2 },
+  bulkLabel: { fontSize: 12, fontWeight: '800', marginBottom: 7, marginTop: 14 },
+  bulkInput: { borderRadius: 8, fontSize: 15, height: 46, paddingHorizontal: 12 },
+  suggestionRow: { gap: 8, paddingTop: 8 },
+  suggestionChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    maxWidth: 180,
+    paddingHorizontal: 12,
+  },
+  suggestionText: { fontSize: 12, fontWeight: '800' },
+  previewBox: { borderRadius: 8, borderWidth: 1, marginTop: 16, padding: 10 },
+  previewTitle: { fontSize: 12, fontWeight: '900' },
+  previewText: { fontSize: 12, lineHeight: 18, marginTop: 4 },
+  saveBulkButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  saveBulkText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   modalScreen: { flex: 1 },
   keyboard: { flex: 1 },
   modalHeader: {

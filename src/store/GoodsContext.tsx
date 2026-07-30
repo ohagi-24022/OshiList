@@ -8,6 +8,7 @@ type GoodsContextValue = {
   loading: boolean;
   addGoods: (input: GoodsInput) => Promise<void>;
   updateGoods: (id: number, input: GoodsInput) => Promise<void>;
+  bulkUpdateGoods: (ids: number[], patch: Partial<Pick<GoodsInput, 'seriesName' | 'characterName'>>) => Promise<void>;
   updateQuantity: (id: number, delta: number) => Promise<void>;
   removeGoods: (id: number) => Promise<void>;
   refresh: () => Promise<void>;
@@ -138,6 +139,35 @@ export function GoodsProvider({ children }: PropsWithChildren) {
     [refresh],
   );
 
+  const bulkUpdateGoods = useCallback(
+    async (ids: number[], patch: Partial<Pick<GoodsInput, 'seriesName' | 'characterName'>>) => {
+      const targetIds = ids.filter((id) => Number.isFinite(id));
+      if (!targetIds.length) return;
+
+      const updates: string[] = [];
+      const values: Array<string | number> = [];
+      if (patch.seriesName !== undefined) {
+        updates.push('series_name = ?');
+        values.push(patch.seriesName.trim() || 'シリーズ未設定');
+      }
+      if (patch.characterName !== undefined) {
+        updates.push('character_name = ?');
+        values.push(patch.characterName.trim() || '未分類');
+      }
+      if (!updates.length) return;
+
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+      const placeholders = targetIds.map(() => '?').join(', ');
+      await db.runAsync(
+        `UPDATE goods SET ${updates.join(', ')} WHERE id IN (${placeholders})`,
+        ...values,
+        ...targetIds,
+      );
+      await refresh();
+    },
+    [refresh],
+  );
+
   const removeGoods = useCallback(
     async (id: number) => {
       await db.runAsync('DELETE FROM goods WHERE id = ?', id);
@@ -147,8 +177,8 @@ export function GoodsProvider({ children }: PropsWithChildren) {
   );
 
   const value = useMemo(
-    () => ({ goods, loading, addGoods, updateGoods, updateQuantity, removeGoods, refresh }),
-    [addGoods, goods, loading, refresh, removeGoods, updateGoods, updateQuantity],
+    () => ({ goods, loading, addGoods, updateGoods, bulkUpdateGoods, updateQuantity, removeGoods, refresh }),
+    [addGoods, bulkUpdateGoods, goods, loading, refresh, removeGoods, updateGoods, updateQuantity],
   );
 
   return <GoodsContext.Provider value={value}>{children}</GoodsContext.Provider>;
