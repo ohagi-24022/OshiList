@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useScrollToTop } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
@@ -39,6 +40,7 @@ type ReceiptCandidateChoice = {
 export default function ScanScreen() {
   const { colors } = useAppTheme();
   const { addGoods } = useGoods();
+  const scrollRef = useRef<ScrollView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<ScanMode>('barcode');
   const [torch, setTorch] = useState(false);
@@ -152,11 +154,12 @@ export default function ScanScreen() {
   };
 
   const cameraReady = Platform.OS !== 'web' && permission?.granted;
+  useScrollToTop(scrollRef);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
       <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.titleBlock}>
             <Text style={[styles.title, { color: colors.text }]}>スキャン登録</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>

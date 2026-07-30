@@ -1,5 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
+import { useScrollToTop } from '@react-navigation/native';
+import { useRef } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,6 +11,8 @@ import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 export default function SettingsScreen() {
   const { colors, presets, setPreset, customPresets, deleteCustomPreset } = useAppTheme();
   const { goods } = useGoods();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
 
   const confirmDeletePreset = (preset: ThemePreset) => {
     if (!preset.custom) return;
@@ -25,7 +29,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
         <View>
           <Text style={[styles.title, { color: colors.text }]}>設定</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>

@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useMemo, useState } from 'react';
+import { useScrollToTop } from '@react-navigation/native';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -25,6 +26,7 @@ export default function MyPageScreen() {
   const { colors } = useAppTheme();
   const { goods } = useGoods();
   const { profile, updateProfile } = useProfile();
+  const scrollRef = useRef<ScrollView>(null);
   const [oshiName, setOshiName] = useState(profile.oshiName);
   const [seriesName, setSeriesName] = useState(profile.seriesName);
   const [imageUrl, setImageUrl] = useState(profile.imageUrl ?? '');
@@ -107,10 +109,11 @@ export default function MyPageScreen() {
   };
 
   const allCandidates = [...localImageCandidates, ...imageCandidates];
+  useScrollToTop(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View>
           <Text style={[styles.title, { color: colors.text }]}>マイページ</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>推しプロフィール、画像、推しマークを設定できます。</Text>

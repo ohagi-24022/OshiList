@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
+import { useScrollToTop } from '@react-navigation/native';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -24,6 +26,7 @@ import { Goods } from '../../src/types';
 export default function ManageScreen() {
   const { colors } = useAppTheme();
   const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
+  const listRef = useRef<FlatList<Goods>>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Goods | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -45,6 +48,19 @@ export default function ManageScreen() {
   const selectedGoods = useMemo(() => goods.filter((item) => selectedIds.has(item.id)), [goods, selectedIds]);
   const seriesSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.seriesName)), [goods]);
   const characterSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.characterName)), [goods]);
+  useScrollToTop(listRef);
+
+  const closeDetail = () => setSelected(null);
+  const detailSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => gesture.dx < -20 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx < -80 && Math.abs(gesture.vx) > 0.15) {
+          closeDetail();
+        }
+      },
+    }),
+  ).current;
 
   const toggleSelectionMode = () => {
     setSelectionMode((current) => {
@@ -166,6 +182,7 @@ export default function ManageScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         contentContainerStyle={styles.listContent}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
@@ -256,15 +273,15 @@ export default function ManageScreen() {
         </View>
       </Modal>
 
-      <Modal animationType="slide" visible={!!selectedItem} onRequestClose={() => setSelected(null)}>
-        <SafeAreaView style={[styles.modalScreen, { backgroundColor: colors.background }]}>
+      <Modal animationType="slide" visible={!!selectedItem} onRequestClose={closeDetail}>
+        <SafeAreaView style={[styles.modalScreen, { backgroundColor: colors.background }]} {...detailSwipeResponder.panHandlers}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
             style={styles.keyboard}
           >
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Pressable accessibilityLabel="編集画面を閉じる" onPress={() => setSelected(null)} style={styles.closeButton}>
+              <Pressable accessibilityLabel="編集画面を閉じる" onPress={closeDetail} style={styles.closeButton}>
                 <Ionicons color={colors.text} name="chevron-back" size={24} />
               </Pressable>
               <Text style={[styles.modalTitle, { color: colors.text }]}>グッズ詳細編集</Text>

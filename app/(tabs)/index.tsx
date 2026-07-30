@@ -1,11 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
+import { useScrollToTop } from '@react-navigation/native';
+import { useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
+import { Goods } from '../../src/types';
 
 type GroupMode = 'all' | 'character' | 'series';
 
@@ -22,6 +24,7 @@ function uniqueValues(values: string[]) {
 export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { goods, loading } = useGoods();
+  const listRef = useRef<FlatList<Goods>>(null);
   const [query, setQuery] = useState('');
   const [groupMode, setGroupMode] = useState<GroupMode>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
@@ -44,6 +47,7 @@ export default function HomeScreen() {
   }, [groupMode, ownedGoods, query, selectedGroup]);
 
   const totalQuantity = filtered.reduce((sum, item) => sum + item.quantity, 0);
+  useScrollToTop(listRef);
 
   const switchGroupMode = (nextMode: GroupMode) => {
     setGroupMode(nextMode);
@@ -130,6 +134,7 @@ export default function HomeScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
         data={filtered}
