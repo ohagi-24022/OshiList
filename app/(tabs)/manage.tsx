@@ -69,7 +69,7 @@ export default function ManageScreen() {
     const elapsed = Date.now() - start.time;
     const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
     const fastEnough = elapsed < 700;
-    if (dx < -64 && horizontal && fastEnough) {
+    if (dx > 64 && horizontal && fastEnough) {
       closeDetail();
     }
   };
