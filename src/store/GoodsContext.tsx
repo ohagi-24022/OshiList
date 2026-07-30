@@ -66,7 +66,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
 
   const refresh = useCallback(async () => {
     const rows = await db.getAllAsync<Record<string, unknown>>(
-      'SELECT * FROM goods ORDER BY updated_at DESC, id DESC',
+      'SELECT * FROM goods ORDER BY created_at DESC, id DESC',
     );
     setGoods(rows.map(mapGoods));
   }, []);

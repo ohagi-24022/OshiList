@@ -24,10 +24,17 @@ import { requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../
 import { lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
-import { ProductLookupResult, ReceiptParseResult } from '../../src/types';
+import { Goods, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
 type ScanMode = 'barcode' | 'receipt';
 type ReceiptSource = 'camera' | 'library';
+type ReceiptCandidateChoice = {
+  boxName: string;
+  imageUrl: string | null;
+  sourceLabel: string;
+  existingGoodsId?: number;
+  existingGoodsLabel?: string;
+};
 
 export default function ScanScreen() {
   const { colors } = useAppTheme();
@@ -400,27 +407,66 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
   );
 }
 
+function normalizeGoodsName(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[【】「」『』（）()［\]\[\]<>＜＞]/g, ' ')
+    .replace(/[^\p{L}\p{N}ー]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenSimilarity(left: string, right: string) {
+  const leftTokens = new Set(normalizeGoodsName(left).split(' ').filter(Boolean));
+  const rightTokens = new Set(normalizeGoodsName(right).split(' ').filter(Boolean));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+
+  let overlap = 0;
+  leftTokens.forEach((token) => {
+    if (rightTokens.has(token)) overlap += 1;
+  });
+
+  return overlap / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function findExistingGoodsMatches(candidateName: string, goods: Goods[]) {
+  const normalizedCandidate = normalizeGoodsName(candidateName);
+  const compactCandidate = normalizedCandidate.replace(/\s/g, '');
+  return goods
+    .map((item) => {
+      const normalizedExisting = normalizeGoodsName(item.boxName);
+      const compactExisting = normalizedExisting.replace(/\s/g, '');
+      const includesScore =
+        compactCandidate.includes(compactExisting) || compactExisting.includes(compactCandidate) ? 0.9 : 0;
+      return {
+        item,
+        score: Math.max(includesScore, tokenSimilarity(candidateName, item.boxName)),
+      };
+    })
+    .filter(({ score }) => score >= 0.45)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ item }) => item);
+}
+
 function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | null; onClose: () => void }) {
   const { colors } = useAppTheme();
-  const { addGoods } = useGoods();
-  const [selectedCandidates, setSelectedCandidates] = useState<
-    Record<
-      string,
-      {
-        boxName: string;
-        imageUrl: string | null;
-        sourceLabel: string;
-      }
-    >
-  >({});
+  const { addGoods, goods, updateQuantity } = useGoods();
+  const [selectedCandidates, setSelectedCandidates] = useState<Record<string, ReceiptCandidateChoice>>({});
   const selectedCount = Object.keys(selectedCandidates).length;
 
-  const toggleCandidate = (key: string, candidate: { boxName: string; imageUrl: string | null; sourceLabel: string }) => {
+  const toggleCandidate = (key: string, candidate: ReceiptCandidateChoice) => {
     setSelectedCandidates((current) => {
       const next = { ...current };
+      const baseKey = key.replace(/-existing-\d+$/, '');
       if (next[key]) {
         delete next[key];
       } else {
+        Object.keys(next).forEach((selectedKey) => {
+          if (selectedKey === baseKey || selectedKey.startsWith(`${baseKey}-existing-`)) {
+            delete next[selectedKey];
+          }
+        });
         next[key] = candidate;
       }
       return next;
@@ -435,6 +481,10 @@ function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | 
   const registerSelectedCandidates = async () => {
     const candidates = Object.values(selectedCandidates);
     for (const candidate of candidates) {
+      if (candidate.existingGoodsId) {
+        await updateQuantity(candidate.existingGoodsId, 1);
+        continue;
+      }
       await addGoods({
         janCode: null,
         boxName: candidate.boxName,
@@ -471,29 +521,65 @@ function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | 
                   item.candidates.map((candidate, candidateIndex) => {
                     const candidateKey = `receipt-${itemIndex}-candidate-${candidateIndex}-${item.normalizedQuery}-${candidate.boxName}`;
                     const selected = !!selectedCandidates[candidateKey];
+                    const existingMatches = findExistingGoodsMatches(candidate.boxName, goods);
                     return (
-                      <Pressable
-                        key={candidateKey}
-                        onPress={() => toggleCandidate(candidateKey, candidate)}
-                        style={[
-                          styles.receiptCandidate,
-                          {
-                            backgroundColor: selected ? colors.input : colors.elevated,
-                            borderColor: selected ? colors.primary : colors.border,
-                          },
-                        ]}
-                      >
-                        <View style={[styles.receiptCandidateImage, { borderColor: colors.border }]}>
-                          {candidate.imageUrl ? <Image source={{ uri: candidate.imageUrl }} style={styles.productImageInner} /> : null}
-                        </View>
-                        <View style={styles.receiptCandidateText}>
-                          <Text numberOfLines={2} style={[styles.candidateName, { color: colors.text }]}>
-                            {candidate.boxName}
-                          </Text>
-                          <Text style={[styles.candidateVariant, { color: colors.muted }]}>{candidate.sourceLabel}</Text>
-                        </View>
-                        <Ionicons color={selected ? colors.primary : colors.muted} name={selected ? 'checkmark-circle' : 'add-circle-outline'} size={24} />
-                      </Pressable>
+                      <View key={candidateKey}>
+                        <Pressable
+                          onPress={() => toggleCandidate(candidateKey, candidate)}
+                          style={[
+                            styles.receiptCandidate,
+                            {
+                              backgroundColor: selected ? colors.input : colors.elevated,
+                              borderColor: selected ? colors.primary : colors.border,
+                            },
+                          ]}
+                        >
+                          <View style={[styles.receiptCandidateImage, { borderColor: colors.border }]}>
+                            {candidate.imageUrl ? <Image source={{ uri: candidate.imageUrl }} style={styles.productImageInner} /> : null}
+                          </View>
+                          <View style={styles.receiptCandidateText}>
+                            <Text numberOfLines={2} style={[styles.candidateName, { color: colors.text }]}>
+                              {candidate.boxName}
+                            </Text>
+                            <Text style={[styles.candidateVariant, { color: colors.muted }]}>{candidate.sourceLabel} / 新規登録</Text>
+                          </View>
+                          <Ionicons color={selected ? colors.primary : colors.muted} name={selected ? 'checkmark-circle' : 'add-circle-outline'} size={24} />
+                        </Pressable>
+                        {!!existingMatches.length && (
+                          <View style={styles.existingMatchBlock}>
+                            <Text style={[styles.existingMatchLabel, { color: colors.muted }]}>すでに持っている場合</Text>
+                            {existingMatches.map((match) => {
+                              const existingKey = `${candidateKey}-existing-${match.id}`;
+                              const existingSelected = !!selectedCandidates[existingKey];
+                              return (
+                                <Pressable
+                                  key={existingKey}
+                                  onPress={() =>
+                                    toggleCandidate(existingKey, {
+                                      ...candidate,
+                                      existingGoodsId: match.id,
+                                      existingGoodsLabel: match.boxName,
+                                    })
+                                  }
+                                  style={[
+                                    styles.existingMatchChip,
+                                    {
+                                      backgroundColor: existingSelected ? colors.input : colors.surface,
+                                      borderColor: existingSelected ? colors.primary : colors.border,
+                                    },
+                                  ]}
+                                >
+                                  <Ionicons color={existingSelected ? colors.primary : colors.muted} name={existingSelected ? 'checkmark-circle' : 'add-circle-outline'} size={16} />
+                                  <Text numberOfLines={1} style={[styles.existingMatchText, { color: colors.text }]}>
+                                    {match.boxName}
+                                  </Text>
+                                  <Text style={[styles.existingMatchQuantity, { color: colors.muted }]}>+1</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
                     );
                   })
                 ) : (
@@ -519,7 +605,7 @@ function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | 
               style={[styles.registerSelectedButton, { backgroundColor: selectedCount ? colors.primary : colors.border }]}
             >
               <Ionicons color="#ffffff" name="checkmark-done-outline" size={18} />
-              <Text style={styles.registerSelectedText}>選択した候補を登録</Text>
+              <Text style={styles.registerSelectedText}>選択した候補を登録/加算</Text>
             </Pressable>
           </View>
         </View>
@@ -725,6 +811,19 @@ const styles = StyleSheet.create({
   },
   receiptCandidateImage: { borderRadius: 6, borderWidth: 1, height: 54, overflow: 'hidden', width: 54 },
   receiptCandidateText: { flex: 1 },
+  existingMatchBlock: { gap: 7, marginTop: 7, paddingHorizontal: 2 },
+  existingMatchLabel: { fontSize: 11, fontWeight: '800' },
+  existingMatchChip: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 38,
+    paddingHorizontal: 10,
+  },
+  existingMatchText: { flex: 1, fontSize: 12, fontWeight: '800' },
+  existingMatchQuantity: { fontSize: 11, fontWeight: '900' },
   noCandidate: { fontSize: 12, lineHeight: 18, marginTop: 10 },
   receiptFooter: { borderTopWidth: 1, gap: 10, paddingTop: 12 },
   receiptSelectionText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
