@@ -18,7 +18,7 @@ YAHOO_APP_ID=your_yahoo_client_id
 RAKUTEN_APP_ID=your_rakuten_application_id
 RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 ALLOWED_ORIGINS=*
 ```
 
@@ -63,7 +63,7 @@ YAHOO_APP_ID=your_yahoo_client_id
 RAKUTEN_APP_ID=your_rakuten_application_id
 RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 ALLOWED_ORIGINS=*
 PYTHON_VERSION=3.12.8
 ```

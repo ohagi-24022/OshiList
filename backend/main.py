@@ -17,11 +17,35 @@ YAHOO_APP_ID = os.getenv("YAHOO_APP_ID")
 RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
 RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
 RAKUTEN_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
+
+
+def normalize_gemini_model(value: str | None) -> str:
+    model = (value or "gemini-3.6-flash").strip()
+    aliases = {
+        "gemini2.5flash": "gemini-3.6-flash",
+        "gemini-2.5flash": "gemini-3.6-flash",
+        "gemini2.5-flash": "gemini-3.6-flash",
+        "gemini flash 2.5": "gemini-3.6-flash",
+        "gemini 2.5 flash": "gemini-3.6-flash",
+        "gemini-2.5-flash": "gemini-3.6-flash",
+        "2.5flash": "gemini-3.6-flash",
+        "2.5-flash": "gemini-3.6-flash",
+        "gemini3.6flash": "gemini-3.6-flash",
+        "gemini-3.6flash": "gemini-3.6-flash",
+        "gemini3.6-flash": "gemini-3.6-flash",
+        "gemini flash 3.6": "gemini-3.6-flash",
+        "gemini 3.6 flash": "gemini-3.6-flash",
+        "3.6flash": "gemini-3.6-flash",
+        "3.6-flash": "gemini-3.6-flash",
+    }
+    return aliases.get(model.lower(), model)
+
+
+GEMINI_MODEL = normalize_gemini_model(os.getenv("GEMINI_MODEL"))
 
 app = FastAPI(title="OshiList Product Lookup", version="0.3.1")
 
@@ -466,7 +490,6 @@ async def extract_receipt_items_with_gemini(image_base64: str, mime_type: str) -
                         },
                     ],
                     "generationConfig": {
-                        "temperature": 0.1,
                         "responseMimeType": "application/json",
                         "responseSchema": schema,
                     },
@@ -526,7 +549,6 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
                 json={
                     "contents": [{"role": "user", "parts": [{"text": f"{prompt}\n\n商品名: {product_name}"}]}],
                     "generationConfig": {
-                        "temperature": 0.1,
                         "responseMimeType": "application/json",
                         "responseSchema": schema,
                     },
