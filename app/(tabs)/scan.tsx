@@ -403,9 +403,51 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
 function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | null; onClose: () => void }) {
   const { colors } = useAppTheme();
   const { addGoods } = useGoods();
+  const [selectedCandidates, setSelectedCandidates] = useState<
+    Record<
+      string,
+      {
+        boxName: string;
+        imageUrl: string | null;
+        sourceLabel: string;
+      }
+    >
+  >({});
+  const selectedCount = Object.keys(selectedCandidates).length;
+
+  const toggleCandidate = (key: string, candidate: { boxName: string; imageUrl: string | null; sourceLabel: string }) => {
+    setSelectedCandidates((current) => {
+      const next = { ...current };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = candidate;
+      }
+      return next;
+    });
+  };
+
+  const closeReceiptModal = () => {
+    setSelectedCandidates({});
+    onClose();
+  };
+
+  const registerSelectedCandidates = async () => {
+    const candidates = Object.values(selectedCandidates);
+    for (const candidate of candidates) {
+      await addGoods({
+        janCode: null,
+        boxName: candidate.boxName,
+        characterName: '未分類',
+        variantName: '通常版',
+        imageUrl: candidate.imageUrl,
+      });
+    }
+    closeReceiptModal();
+  };
 
   return (
-    <Modal animationType="slide" transparent visible={!!result} onRequestClose={onClose}>
+    <Modal animationType="slide" transparent visible={!!result} onRequestClose={closeReceiptModal}>
       <View style={styles.modalBackdrop}>
         <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
           <View style={styles.sheetHeader}>
@@ -413,46 +455,47 @@ function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | 
               <Text style={[styles.sheetTitle, { color: colors.text }]}>領収書の候補</Text>
               <Text style={[styles.sheetSubtitle, { color: colors.muted }]}>商品名候補を確認して登録してください。</Text>
             </View>
-            <Pressable onPress={onClose} style={styles.closeButton}>
+            <Pressable onPress={closeReceiptModal} style={styles.closeButton}>
               <Ionicons color={colors.text} name="close" size={22} />
             </Pressable>
           </View>
 
           <ScrollView style={styles.candidateList} showsVerticalScrollIndicator={false}>
-            {result?.items.map((item) => (
-              <View key={`${item.rawText}-${item.normalizedQuery}`} style={[styles.receiptItem, { borderColor: colors.border }]}>
+            {result?.items.map((item, itemIndex) => (
+              <View key={`receipt-${itemIndex}-${item.rawText}-${item.normalizedQuery}`} style={[styles.receiptItem, { borderColor: colors.border }]}>
                 <Text style={[styles.receiptQuery, { color: colors.text }]}>{item.normalizedQuery}</Text>
                 <Text style={[styles.receiptRaw, { color: colors.muted }]}>
                   読取: {item.rawText} / 信頼度 {Math.round(item.confidence * 100)}%
                 </Text>
                 {item.candidates.length ? (
-                  item.candidates.map((candidate) => (
-                    <Pressable
-                      key={`${item.normalizedQuery}-${candidate.boxName}`}
-                      onPress={async () => {
-                        await addGoods({
-                          janCode: null,
-                          boxName: candidate.boxName,
-                          characterName: '未分類',
-                          variantName: '通常版',
-                          imageUrl: candidate.imageUrl,
-                        });
-                        onClose();
-                      }}
-                      style={[styles.receiptCandidate, { backgroundColor: colors.elevated }]}
-                    >
-                      <View style={[styles.receiptCandidateImage, { borderColor: colors.border }]}>
-                        {candidate.imageUrl ? <Image source={{ uri: candidate.imageUrl }} style={styles.productImageInner} /> : null}
-                      </View>
-                      <View style={styles.receiptCandidateText}>
-                        <Text numberOfLines={2} style={[styles.candidateName, { color: colors.text }]}>
-                          {candidate.boxName}
-                        </Text>
-                        <Text style={[styles.candidateVariant, { color: colors.muted }]}>{candidate.sourceLabel}</Text>
-                      </View>
-                      <Ionicons color={colors.primary} name="add-circle-outline" size={24} />
-                    </Pressable>
-                  ))
+                  item.candidates.map((candidate, candidateIndex) => {
+                    const candidateKey = `receipt-${itemIndex}-candidate-${candidateIndex}-${item.normalizedQuery}-${candidate.boxName}`;
+                    const selected = !!selectedCandidates[candidateKey];
+                    return (
+                      <Pressable
+                        key={candidateKey}
+                        onPress={() => toggleCandidate(candidateKey, candidate)}
+                        style={[
+                          styles.receiptCandidate,
+                          {
+                            backgroundColor: selected ? colors.input : colors.elevated,
+                            borderColor: selected ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
+                        <View style={[styles.receiptCandidateImage, { borderColor: colors.border }]}>
+                          {candidate.imageUrl ? <Image source={{ uri: candidate.imageUrl }} style={styles.productImageInner} /> : null}
+                        </View>
+                        <View style={styles.receiptCandidateText}>
+                          <Text numberOfLines={2} style={[styles.candidateName, { color: colors.text }]}>
+                            {candidate.boxName}
+                          </Text>
+                          <Text style={[styles.candidateVariant, { color: colors.muted }]}>{candidate.sourceLabel}</Text>
+                        </View>
+                        <Ionicons color={selected ? colors.primary : colors.muted} name={selected ? 'checkmark-circle' : 'add-circle-outline'} size={24} />
+                      </Pressable>
+                    );
+                  })
                 ) : (
                   <Text style={[styles.noCandidate, { color: colors.muted }]}>商品検索候補が見つかりませんでした。</Text>
                 )}
@@ -460,14 +503,25 @@ function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | 
             ))}
             {!!result?.warnings?.length && (
               <View style={[styles.warningBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
-                {result.warnings.slice(0, 4).map((warning) => (
-                  <Text key={warning} style={[styles.warningText, { color: colors.muted }]}>
+                {result.warnings.slice(0, 4).map((warning, warningIndex) => (
+                  <Text key={`receipt-warning-${warningIndex}-${warning}`} style={[styles.warningText, { color: colors.muted }]}>
                     {warning}
                   </Text>
                 ))}
               </View>
             )}
           </ScrollView>
+          <View style={[styles.receiptFooter, { borderTopColor: colors.border }]}>
+            <Text style={[styles.receiptSelectionText, { color: colors.muted }]}>{selectedCount}件選択中</Text>
+            <Pressable
+              disabled={!selectedCount}
+              onPress={registerSelectedCandidates}
+              style={[styles.registerSelectedButton, { backgroundColor: selectedCount ? colors.primary : colors.border }]}
+            >
+              <Ionicons color="#ffffff" name="checkmark-done-outline" size={18} />
+              <Text style={styles.registerSelectedText}>選択した候補を登録</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>
@@ -493,8 +547,8 @@ function ProductPreview({ result }: { result: ProductLookupResult }) {
       </View>
       {!!result.warnings?.length && (
         <View style={[styles.warningBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
-          {result.warnings.map((warning) => (
-            <Text key={warning} style={[styles.warningText, { color: colors.muted }]}>
+          {result.warnings.map((warning, warningIndex) => (
+            <Text key={`product-warning-${warningIndex}-${warning}`} style={[styles.warningText, { color: colors.muted }]}>
               {warning}
             </Text>
           ))}
@@ -663,6 +717,7 @@ const styles = StyleSheet.create({
   receiptCandidate: {
     alignItems: 'center',
     borderRadius: 8,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 10,
     marginTop: 10,
@@ -671,4 +726,15 @@ const styles = StyleSheet.create({
   receiptCandidateImage: { borderRadius: 6, borderWidth: 1, height: 54, overflow: 'hidden', width: 54 },
   receiptCandidateText: { flex: 1 },
   noCandidate: { fontSize: 12, lineHeight: 18, marginTop: 10 },
+  receiptFooter: { borderTopWidth: 1, gap: 10, paddingTop: 12 },
+  receiptSelectionText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  registerSelectedButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+  },
+  registerSelectedText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
 });
