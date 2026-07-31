@@ -3,6 +3,8 @@ import { useScrollToTop } from '@react-navigation/native';
 import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Dimensions,
   FlatList,
   GestureResponderEvent,
   KeyboardAvoidingView,
@@ -28,6 +30,7 @@ export default function ManageScreen() {
   const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
   const detailTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const detailTranslateX = useRef(new Animated.Value(0)).current;
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Goods | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -51,7 +54,10 @@ export default function ManageScreen() {
   const characterSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.characterName)), [goods]);
   useScrollToTop(listRef);
 
-  const closeDetail = () => setSelected(null);
+  const closeDetail = () => {
+    detailTranslateX.setValue(0);
+    setSelected(null);
+  };
   const rememberDetailTouchStart = (event: GestureResponderEvent) => {
     detailTouchStartRef.current = {
       x: event.nativeEvent.pageX,
@@ -59,7 +65,18 @@ export default function ManageScreen() {
       time: Date.now(),
     };
   };
-  const closeDetailOnLeftSwipe = (event: GestureResponderEvent) => {
+  const moveDetailWithSwipe = (event: GestureResponderEvent) => {
+    const start = detailTouchStartRef.current;
+    if (!start) return;
+
+    const dx = event.nativeEvent.pageX - start.x;
+    const dy = event.nativeEvent.pageY - start.y;
+    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
+    if (dx > 0 && horizontal) {
+      detailTranslateX.setValue(Math.min(dx, 140));
+    }
+  };
+  const finishDetailSwipe = (event: GestureResponderEvent) => {
     const start = detailTouchStartRef.current;
     detailTouchStartRef.current = null;
     if (!start) return;
@@ -70,8 +87,19 @@ export default function ManageScreen() {
     const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
     const fastEnough = elapsed < 700;
     if (dx > 64 && horizontal && fastEnough) {
-      closeDetail();
+      Animated.timing(detailTranslateX, {
+        duration: 180,
+        toValue: Dimensions.get('window').width,
+        useNativeDriver: true,
+      }).start(() => closeDetail());
+      return;
     }
+    Animated.spring(detailTranslateX, {
+      damping: 18,
+      stiffness: 220,
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
   };
 
   const toggleSelectionMode = () => {
@@ -287,41 +315,52 @@ export default function ManageScreen() {
 
       <Modal animationType="slide" visible={!!selectedItem} onRequestClose={closeDetail}>
         <SafeAreaView
-          onTouchEnd={closeDetailOnLeftSwipe}
+          onTouchEnd={finishDetailSwipe}
+          onTouchMove={moveDetailWithSwipe}
           onTouchStart={rememberDetailTouchStart}
           style={[styles.modalScreen, { backgroundColor: colors.background }]}
         >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
-            style={styles.keyboard}
+          <Animated.View
+            style={[
+              styles.animatedDetail,
+              {
+                transform: [{ translateX: detailTranslateX }],
+              },
+            ]}
           >
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Pressable accessibilityLabel="編集画面を閉じる" onPress={closeDetail} style={styles.closeButton}>
-                <Ionicons color={colors.text} name="chevron-back" size={24} />
-              </Pressable>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>グッズ詳細編集</Text>
-              <View style={styles.closeButton} />
-            </View>
-            <ScrollView
-              contentContainerStyle={styles.modalContent}
-              keyboardShouldPersistTaps="handled"
-              onTouchEnd={closeDetailOnLeftSwipe}
-              onTouchStart={rememberDetailTouchStart}
-              showsVerticalScrollIndicator={false}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+              style={styles.keyboard}
             >
-              {selectedItem ? (
-                <GoodsEditForm
-                  item={selectedItem}
-                  onCancel={() => setSelected(null)}
-                  onSave={async (input) => {
-                    await updateGoods(selectedItem.id, input);
-                    setSelected(null);
-                  }}
-                />
-              ) : null}
-            </ScrollView>
-          </KeyboardAvoidingView>
+              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                <Pressable accessibilityLabel="編集画面を閉じる" onPress={closeDetail} style={styles.closeButton}>
+                  <Ionicons color={colors.text} name="chevron-back" size={24} />
+                </Pressable>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>グッズ詳細編集</Text>
+                <View style={styles.closeButton} />
+              </View>
+              <ScrollView
+                contentContainerStyle={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                onTouchEnd={finishDetailSwipe}
+                onTouchMove={moveDetailWithSwipe}
+                onTouchStart={rememberDetailTouchStart}
+                showsVerticalScrollIndicator={false}
+              >
+                {selectedItem ? (
+                  <GoodsEditForm
+                    item={selectedItem}
+                    onCancel={closeDetail}
+                    onSave={async (input) => {
+                      await updateGoods(selectedItem.id, input);
+                      closeDetail();
+                    }}
+                  />
+                ) : null}
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </Animated.View>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -467,6 +506,7 @@ const styles = StyleSheet.create({
   },
   saveBulkText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   modalScreen: { flex: 1 },
+  animatedDetail: { flex: 1 },
   keyboard: { flex: 1 },
   modalHeader: {
     alignItems: 'center',
