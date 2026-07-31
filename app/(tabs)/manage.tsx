@@ -320,10 +320,17 @@ export default function ManageScreen() {
           onTouchStart={rememberDetailTouchStart}
           style={[styles.modalScreen, { backgroundColor: colors.background }]}
         >
+          <View style={[styles.swipeBackLayer, { backgroundColor: colors.background }]}>
+            <View style={[styles.swipeBackHint, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons color={colors.primary} name="chevron-back" size={24} />
+              <Text style={[styles.swipeBackText, { color: colors.text }]}>管理へ戻る</Text>
+            </View>
+          </View>
           <Animated.View
             style={[
               styles.animatedDetail,
               {
+                backgroundColor: colors.background,
                 transform: [{ translateX: detailTranslateX }],
               },
             ]}
@@ -506,7 +513,36 @@ const styles = StyleSheet.create({
   },
   saveBulkText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   modalScreen: { flex: 1 },
-  animatedDetail: { flex: 1 },
+  swipeBackLayer: {
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    paddingLeft: 18,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  swipeBackHint: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 42,
+    paddingHorizontal: 12,
+  },
+  swipeBackText: { fontSize: 13, fontWeight: '900' },
+  animatedDetail: {
+    borderTopLeftRadius: 10,
+    borderBottomLeftRadius: 10,
+    elevation: 10,
+    flex: 1,
+    shadowColor: '#000000',
+    shadowOffset: { height: 0, width: -8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+  },
   keyboard: { flex: 1 },
   modalHeader: {
     alignItems: 'center',
