@@ -1,424 +1,290 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useScrollToTop } from '@react-navigation/native';
-import { useMemo, useRef, useState } from 'react';
-import { Animated, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
+import { isOshiGoods } from '../../src/lib/oshi';
 import { useGoods } from '../../src/store/GoodsContext';
+import { useProfile } from '../../src/store/ProfileContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
-import { Goods } from '../../src/types';
-
-type GroupMode = 'all' | 'character' | 'series';
-type SortMode = 'created' | 'character' | 'seriesCharacter';
-
-const groupModes: Array<[GroupMode, string, keyof typeof Ionicons.glyphMap]> = [
-  ['all', '全体', 'albums-outline'],
-  ['character', 'キャラ', 'person-outline'],
-  ['series', 'シリーズ', 'layers-outline'],
-];
-
-const sortModes: Array<[SortMode, string, keyof typeof Ionicons.glyphMap]> = [
-  ['created', '追加順', 'time-outline'],
-  ['character', 'キャラクター順(全体)', 'person-outline'],
-  ['seriesCharacter', 'キャラクター順(シリーズ)', 'layers-outline'],
-];
-
-function uniqueValues(values: string[]) {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ja'));
-}
-
-function compareText(a: string, b: string) {
-  return a.trim().localeCompare(b.trim(), 'ja', { sensitivity: 'base', numeric: true });
-}
-
-function compareByCreated(a: Goods, b: Goods) {
-  return b.id - a.id;
-}
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { goods, loading } = useGoods();
-  const listRef = useRef<FlatList<Goods>>(null);
-  const headerTranslateY = useRef(new Animated.Value(0)).current;
-  const headerHiddenRef = useRef(false);
-  const lastScrollYRef = useRef(0);
-  const [query, setQuery] = useState('');
-  const [groupMode, setGroupMode] = useState<GroupMode>('all');
-  const [selectedGroup, setSelectedGroup] = useState<string>('all');
-  const [sortMode, setSortMode] = useState<SortMode>('created');
-  const [sortMenuVisible, setSortMenuVisible] = useState(false);
-  const [headerHeight, setHeaderHeight] = useState(190);
+  const { profile } = useProfile();
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
-  const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
-  const seriesGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.seriesName || 'シリーズ未設定')), [ownedGoods]);
-  const activeGroups = groupMode === 'character' ? characterGroups : groupMode === 'series' ? seriesGroups : [];
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return ownedGoods.filter((item) => {
-      const matchesGroup =
-        groupMode === 'all' ||
-        selectedGroup === 'all' ||
-        (groupMode === 'character' ? item.characterName === selectedGroup : item.seriesName === selectedGroup);
-      const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
-      return matchesGroup && (!normalized || target.toLowerCase().includes(normalized));
-    });
-  }, [groupMode, ownedGoods, query, selectedGroup]);
-
-  const sortedGoods = useMemo(() => {
-    const nextGoods = [...filtered];
-    if (sortMode === 'character') {
-      return nextGoods.sort(
-        (a, b) =>
-          compareText(a.characterName, b.characterName) ||
-          compareText(a.seriesName, b.seriesName) ||
-          compareText(a.boxName, b.boxName) ||
-          compareByCreated(a, b),
-      );
-    }
-    if (sortMode === 'seriesCharacter') {
-      return nextGoods.sort(
-        (a, b) =>
-          compareText(a.seriesName, b.seriesName) ||
-          compareText(a.characterName, b.characterName) ||
-          compareText(a.boxName, b.boxName) ||
-          compareByCreated(a, b),
-      );
-    }
-    return nextGoods.sort(compareByCreated);
-  }, [filtered, sortMode]);
-
-  const totalQuantity = sortedGoods.reduce((sum, item) => sum + item.quantity, 0);
-  const visibleSortModes = useMemo(
-    () =>
-      sortModes.filter(([value]) => {
-        if (groupMode === 'character') return value !== 'character';
-        if (groupMode === 'series') return value !== 'seriesCharacter';
-        return true;
-      }),
-    [groupMode],
-  );
-  useScrollToTop(listRef);
-
-  const setHeaderHidden = (hidden: boolean) => {
-    if (headerHiddenRef.current === hidden) return;
-    headerHiddenRef.current = hidden;
-    Animated.timing(headerTranslateY, {
-      duration: 180,
-      toValue: hidden ? -headerHeight : 0,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleListScroll = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
-    const y = Math.max(0, event.nativeEvent.contentOffset.y);
-    const delta = y - lastScrollYRef.current;
-    lastScrollYRef.current = y;
-
-    if (y < 24) {
-      setHeaderHidden(false);
-      return;
-    }
-    if (delta > 10 && y > headerHeight * 0.45) {
-      setHeaderHidden(true);
-    } else if (delta < -10) {
-      setHeaderHidden(false);
-    }
-  };
-
-  const switchGroupMode = (nextMode: GroupMode) => {
-    setGroupMode(nextMode);
-    setSelectedGroup('all');
-    if ((nextMode === 'character' && sortMode === 'character') || (nextMode === 'series' && sortMode === 'seriesCharacter')) {
-      setSortMode('created');
-    }
-  };
+  const oshiGoods = useMemo(() => ownedGoods.filter((item) => isOshiGoods(item, profile)), [ownedGoods, profile]);
+  const recentGoods = useMemo(() => [...goods].sort((a, b) => b.id - a.id).slice(0, 4), [goods]);
+  const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
+  const totalQuantity = ownedGoods.reduce((sum, item) => sum + item.quantity, 0);
+  const oshiQuantity = oshiGoods.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <Animated.View
-        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
-        style={[
-          styles.header,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-            transform: [{ translateY: headerTranslateY }],
-          },
-        ]}
-      >
-        <View style={styles.titleRow}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
           <View>
-            <Text style={[styles.title, { color: colors.text }]}>OshiList</Text>
+            <Text style={[styles.title, { color: colors.text }]}>ホーム</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : `${filtered.length}種類 / ${totalQuantity}個`}
+              {loading ? '読み込み中' : `${ownedGoods.length}種類 / ${totalQuantity}個を所持`}
             </Text>
-          </View>
-          <View style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <Ionicons color={colors.primary} name="albums-outline" size={18} />
-            <Text style={[styles.summaryText, { color: colors.text }]}>コレクション</Text>
-          </View>
-        </View>
-
-        <View style={styles.searchRow}>
-          <View style={[styles.searchBox, { backgroundColor: colors.input }]}>
-            <Ionicons color={colors.muted} name="search" size={18} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="シリーズ・キャラ・仕様で検索"
-              placeholderTextColor={colors.muted}
-              autoCorrect={false}
-              style={[styles.searchInput, { color: colors.text }]}
-            />
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="並び替えを変更"
-            onPress={() => setSortMenuVisible(true)}
-            style={[styles.sortButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            accessibilityLabel="マイページを開く"
+            onPress={() => router.push('/(tabs)/mypage')}
+            style={[styles.profileButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
-            <Ionicons color={colors.primary} name="swap-vertical-outline" size={18} />
+            <Ionicons color={colors.primary} name="person-circle-outline" size={24} />
           </Pressable>
         </View>
 
-        <View style={[styles.segment, { backgroundColor: colors.input }]}>
-          {groupModes.map(([value, label, icon]) => {
-            const active = groupMode === value;
-            return (
-              <Pressable
-                key={value}
-                onPress={() => switchGroupMode(value)}
-                style={[styles.segmentButton, active && { backgroundColor: colors.surface }]}
-              >
-                <Ionicons color={active ? colors.primary : colors.muted} name={icon} size={17} />
-                <Text style={[styles.segmentText, { color: active ? colors.text : colors.muted }]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {groupMode !== 'all' ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupChips}>
-            <Pressable
-              onPress={() => setSelectedGroup('all')}
-              style={[
-                styles.groupChip,
-                { borderColor: colors.border, backgroundColor: colors.surface },
-                selectedGroup === 'all' && { backgroundColor: colors.text, borderColor: colors.text },
-              ]}
-            >
-              <Text style={[styles.groupChipText, { color: selectedGroup === 'all' ? colors.background : colors.text }]}>
-                すべて
-              </Text>
-            </Pressable>
-            {activeGroups.map((group) => (
-              <Pressable
-                key={group}
-                onPress={() => setSelectedGroup(group)}
-                style={[
-                  styles.groupChip,
-                  { borderColor: colors.border, backgroundColor: colors.surface },
-                  selectedGroup === group && { backgroundColor: colors.text, borderColor: colors.text },
-                ]}
-              >
-                <Text style={[styles.groupChipText, { color: selectedGroup === group ? colors.background : colors.text }]}>
-                  {group}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
-
-      </Animated.View>
-
-      <Modal animationType="fade" transparent visible={sortMenuVisible} onRequestClose={() => setSortMenuVisible(false)}>
-        <Pressable style={styles.sortOverlay} onPress={() => setSortMenuVisible(false)}>
-          <Pressable style={[styles.sortSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <View style={styles.sortSheetHeader}>
-              <Text style={[styles.sortSheetTitle, { color: colors.text }]}>並び替え</Text>
-              <Pressable accessibilityLabel="並び替えを閉じる" onPress={() => setSortMenuVisible(false)} style={styles.sortCloseButton}>
-                <Ionicons color={colors.text} name="close" size={22} />
-              </Pressable>
+        <View style={[styles.oshiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.oshiImageWrap, { backgroundColor: colors.elevated }]}>
+            {profile.imageUrl ? (
+              <Image source={{ uri: profile.imageUrl }} style={styles.oshiImage} />
+            ) : (
+              <Ionicons color={colors.muted} name="sparkles-outline" size={34} />
+            )}
+          </View>
+          <View style={styles.oshiBody}>
+            <Text style={[styles.cardLabel, { color: colors.muted }]}>推し</Text>
+            <Text numberOfLines={1} style={[styles.oshiName, { color: colors.text }]}>
+              {profile.oshiName.trim() || '推し未設定'}
+            </Text>
+            <Text numberOfLines={1} style={[styles.oshiMeta, { color: colors.muted }]}>
+              {profile.seriesName.trim() || 'シリーズ未設定'}
+            </Text>
+            <View style={styles.statRow}>
+              <MiniStat label="推しグッズ" value={`${oshiGoods.length}種類`} />
+              <MiniStat label="合計" value={`${oshiQuantity}個`} />
             </View>
-            {visibleSortModes.map(([value, label, icon]) => {
-              const active = sortMode === value;
-              return (
-                <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => {
-                    setSortMode(value);
-                    setSortMenuVisible(false);
-                  }}
-                  style={[
-                    styles.sortOption,
-                    { backgroundColor: active ? colors.surface : colors.background, borderColor: colors.border },
-                  ]}
-                >
-                  <View style={[styles.sortOptionIcon, { backgroundColor: active ? colors.primary : colors.elevated }]}>
-                    <Ionicons color={active ? '#ffffff' : colors.muted} name={icon} size={18} />
-                  </View>
-                  <Text style={[styles.sortOptionText, { color: colors.text }]}>{label}</Text>
-                  {active ? <Ionicons color={colors.primary} name="checkmark-circle" size={22} /> : null}
-                </Pressable>
-              );
-            })}
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </View>
+        </View>
 
-      <FlatList
-        ref={listRef}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={[styles.listContent, { paddingTop: headerHeight + 18 }]}
-        data={sortedGoods}
-        keyExtractor={(item) => String(item.id)}
-        numColumns={2}
-        onScroll={handleListScroll}
-        scrollEventThrottle={16}
-        renderItem={({ item }) => (
-          <View style={styles.gridItem}>
-            <HomeGoodsTile item={item} />
+        {unorganizedGoods.length ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/(tabs)/manage')}
+            style={[styles.suggestionCard, { backgroundColor: colors.primary }]}
+          >
+            <View style={styles.suggestionIcon}>
+              <Ionicons color="#ffffff" name="file-tray-outline" size={22} />
+            </View>
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>未整理を整理しましょう</Text>
+              <Text style={styles.suggestionText}>{unorganizedGoods.length}件のグッズが未整理です</Text>
+            </View>
+            <Ionicons color="#ffffff" name="chevron-forward" size={20} />
+          </Pressable>
+        ) : (
+          <View style={[styles.cleanCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons color={colors.primary} name="checkmark-circle-outline" size={22} />
+            <Text style={[styles.cleanText, { color: colors.text }]}>未整理のグッズはありません</Text>
           </View>
         )}
-        ListEmptyComponent={
-          <View style={[styles.empty, { borderColor: colors.border }]}>
-            <Ionicons color={colors.muted} name="cube-outline" size={40} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>所持中のグッズがありません</Text>
-            <Text style={[styles.emptyText, { color: colors.muted }]}>
-              追加や編集は管理タブから行えます。ホームには所持しているグッズだけが表示されます。
-            </Text>
+
+        <View style={styles.quickGrid}>
+          <QuickAction
+            icon="albums-outline"
+            label="コレクション"
+            text="所持グッズを見る"
+            onPress={() => router.push('/(tabs)/collection')}
+          />
+          <QuickAction
+            icon="person-circle-outline"
+            label="マイページ"
+            text="推し設定を編集"
+            onPress={() => router.push('/(tabs)/mypage')}
+          />
+        </View>
+
+        <SectionHeader
+          title="推しのグッズ"
+          actionLabel="コレクションへ"
+          onPress={() => router.push('/(tabs)/collection')}
+        />
+        {oshiGoods.length ? (
+          <View style={styles.tileGrid}>
+            {oshiGoods.slice(0, 4).map((item) => (
+              <View key={item.id} style={styles.tileItem}>
+                <HomeGoodsTile item={item} />
+              </View>
+            ))}
           </View>
-        }
-      />
+        ) : (
+          <EmptyPanel icon="heart-outline" text="推し設定をすると、ここに推しのグッズが表示されます" />
+        )}
+
+        <SectionHeader
+          title="最近追加したグッズ"
+          actionLabel="管理へ"
+          onPress={() => router.push('/(tabs)/manage')}
+        />
+        {recentGoods.length ? (
+          <View style={styles.tileGrid}>
+            {recentGoods.map((item) => (
+              <View key={item.id} style={styles.tileItem}>
+                <HomeGoodsTile item={item} />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <EmptyPanel icon="cube-outline" text="スキャンや手動登録をすると、最近追加したグッズが表示されます" />
+        )}
+      </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={[styles.miniStat, { backgroundColor: colors.input }]}>
+      <Text style={[styles.miniStatValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.miniStatLabel, { color: colors.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  onPress,
+  text,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  text: string;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <Pressable onPress={onPress} style={[styles.quickAction, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Ionicons color={colors.primary} name={icon} size={22} />
+      <Text style={[styles.quickLabel, { color: colors.text }]}>{label}</Text>
+      <Text style={[styles.quickText, { color: colors.muted }]}>{text}</Text>
+    </Pressable>
+  );
+}
+
+function SectionHeader({ actionLabel, onPress, title }: { actionLabel: string; onPress: () => void; title: string }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+      <Pressable onPress={onPress} style={styles.sectionAction}>
+        <Text style={[styles.sectionActionText, { color: colors.primary }]}>{actionLabel}</Text>
+        <Ionicons color={colors.primary} name="chevron-forward" size={16} />
+      </Pressable>
+    </View>
+  );
+}
+
+function EmptyPanel({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={[styles.emptyPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Ionicons color={colors.muted} name={icon} size={24} />
+      <Text style={[styles.emptyText, { color: colors.muted }]}>{text}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: {
-    borderBottomWidth: 1,
-    elevation: 8,
-    left: 0,
-    paddingBottom: 12,
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    position: 'absolute',
-    right: 0,
-    shadowColor: '#000000',
-    shadowOffset: { height: 4, width: 0 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    top: 0,
-    zIndex: 10,
-  },
-  titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
-  subtitle: { fontSize: 12, marginTop: 2 },
-  summaryBadge: {
+  content: { padding: 18, paddingBottom: 96 },
+  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  title: { fontSize: 28, fontWeight: '900', letterSpacing: 0 },
+  subtitle: { fontSize: 12, marginTop: 3 },
+  profileButton: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
-    height: 34,
-    paddingHorizontal: 12,
+    height: 46,
+    justifyContent: 'center',
+    width: 46,
   },
-  summaryText: { fontSize: 12, fontWeight: '800' },
-  searchRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 14 },
-  searchBox: {
-    alignItems: 'center',
-    borderRadius: 8,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 8,
-    height: 44,
-    paddingHorizontal: 12,
-  },
-  searchInput: { flex: 1, fontSize: 15 },
-  sortButton: {
-    alignItems: 'center',
+  oshiCard: {
     borderRadius: 8,
     borderWidth: 1,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  segment: { borderRadius: 8, flexDirection: 'row', gap: 4, marginTop: 10, padding: 4 },
-  segmentButton: {
-    alignItems: 'center',
-    borderRadius: 7,
-    flex: 1,
     flexDirection: 'row',
-    gap: 6,
-    height: 38,
-    justifyContent: 'center',
+    gap: 14,
+    marginTop: 18,
+    padding: 14,
   },
-  segmentText: { fontSize: 12, fontWeight: '900' },
-  groupChips: { gap: 8, paddingTop: 10 },
-  groupChip: {
-    alignItems: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 34,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  groupChipText: { fontSize: 12, fontWeight: '800' },
-  sortOverlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.28)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sortSheet: {
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderTopWidth: 1,
-    padding: 18,
-    paddingBottom: 28,
-  },
-  sortSheetHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  sortSheetTitle: { fontSize: 17, fontWeight: '900' },
-  sortCloseButton: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 },
-  sortOption: {
+  oshiImageWrap: {
     alignItems: 'center',
     borderRadius: 8,
-    borderWidth: 1,
+    height: 108,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 86,
+  },
+  oshiImage: { height: '100%', width: '100%' },
+  oshiBody: { flex: 1, minWidth: 0 },
+  cardLabel: { fontSize: 11, fontWeight: '900' },
+  oshiName: { fontSize: 21, fontWeight: '900', marginTop: 4 },
+  oshiMeta: { fontSize: 12, fontWeight: '800', marginTop: 3 },
+  statRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  miniStat: { borderRadius: 8, flex: 1, padding: 9 },
+  miniStatValue: { fontSize: 16, fontWeight: '900' },
+  miniStatLabel: { fontSize: 10, fontWeight: '800', marginTop: 2 },
+  suggestionCard: {
+    alignItems: 'center',
+    borderRadius: 8,
     flexDirection: 'row',
     gap: 12,
-    minHeight: 54,
-    paddingHorizontal: 12,
-    marginTop: 8,
+    marginTop: 14,
+    minHeight: 72,
+    padding: 14,
   },
-  sortOptionIcon: {
+  suggestionIcon: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 999,
-    height: 34,
+    height: 42,
     justifyContent: 'center',
-    width: 34,
+    width: 42,
   },
-  sortOptionText: { flex: 1, fontSize: 14, fontWeight: '900' },
-  listContent: { padding: 18, paddingBottom: 96 },
-  gridItem: { flex: 1, maxWidth: '48.6%' },
-  gridRow: { gap: 10, marginBottom: 10 },
-  empty: {
+  suggestionBody: { flex: 1 },
+  suggestionTitle: { color: '#ffffff', fontSize: 16, fontWeight: '900' },
+  suggestionText: { color: '#ffffff', fontSize: 12, fontWeight: '800', marginTop: 3, opacity: 0.88 },
+  cleanCard: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+    minHeight: 58,
+    paddingHorizontal: 14,
+  },
+  cleanText: { fontSize: 14, fontWeight: '900' },
+  quickGrid: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  quickAction: { borderRadius: 8, borderWidth: 1, flex: 1, minHeight: 92, padding: 13 },
+  quickLabel: { fontSize: 15, fontWeight: '900', marginTop: 10 },
+  quickText: { fontSize: 11, fontWeight: '800', marginTop: 4 },
+  sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: '900' },
+  sectionAction: { alignItems: 'center', flexDirection: 'row', gap: 2, minHeight: 36 },
+  sectionActionText: { fontSize: 12, fontWeight: '900' },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  tileItem: { width: '48.5%' },
+  emptyPanel: {
     alignItems: 'center',
     borderRadius: 8,
     borderStyle: 'dashed',
     borderWidth: 1,
-    marginTop: 36,
-    padding: 24,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+    minHeight: 72,
+    padding: 14,
   },
-  emptyTitle: { fontSize: 17, fontWeight: '900', marginTop: 12 },
-  emptyText: { fontSize: 13, lineHeight: 19, marginTop: 8, textAlign: 'center' },
+  emptyText: { flex: 1, fontSize: 12, fontWeight: '800', lineHeight: 18 },
 });

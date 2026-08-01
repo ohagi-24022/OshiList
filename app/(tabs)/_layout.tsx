@@ -26,6 +26,13 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'ホーム',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="home-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="collection"
+        options={{
+          title: 'コレクション',
           tabBarIcon: ({ color, size }) => <Ionicons color={color} name="albums-outline" size={size} />,
         }}
       />

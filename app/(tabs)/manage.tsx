@@ -35,6 +35,7 @@ export default function ManageScreen() {
   const [selected, setSelected] = useState<Goods | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [unorganizedOnly, setUnorganizedOnly] = useState(false);
   const [bulkModalVisible, setBulkModalVisible] = useState(false);
   const [bulkSeriesName, setBulkSeriesName] = useState('');
   const [bulkCharacterName, setBulkCharacterName] = useState('');
@@ -42,10 +43,13 @@ export default function ManageScreen() {
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return goods.filter((item) => {
+      if (unorganizedOnly && item.status !== 'unorganized') return false;
       const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
       return !normalized || target.toLowerCase().includes(normalized);
     });
-  }, [goods, query]);
+  }, [goods, query, unorganizedOnly]);
+
+  const unorganizedCount = useMemo(() => goods.filter((item) => item.status === 'unorganized').length, [goods]);
 
   const selectedItem = selected ? goods.find((item) => item.id === selected.id) ?? selected : null;
   const selectedCount = selectedIds.size;
@@ -212,6 +216,20 @@ export default function ManageScreen() {
             style={[styles.searchInput, { color: colors.text }]}
           />
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: unorganizedOnly }}
+          onPress={() => setUnorganizedOnly((current) => !current)}
+          style={[
+            styles.filterButton,
+            { borderColor: colors.border, backgroundColor: unorganizedOnly ? colors.text : colors.surface },
+          ]}
+        >
+          <Ionicons color={unorganizedOnly ? colors.background : colors.primary} name="file-tray-outline" size={17} />
+          <Text style={[styles.filterButtonText, { color: unorganizedOnly ? colors.background : colors.text }]}>
+            未整理のみ {unorganizedCount}
+          </Text>
+        </Pressable>
         {selectionMode ? (
           <View style={styles.bulkActions}>
             <Pressable
@@ -441,6 +459,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   searchInput: { flex: 1, fontSize: 15 },
+  filterButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    height: 36,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+  },
+  filterButtonText: { fontSize: 12, fontWeight: '900' },
   bulkActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
   bulkSubButton: {
     alignItems: 'center',

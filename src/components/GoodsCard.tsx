@@ -21,6 +21,7 @@ const statusLabels: Record<Goods['status'], string> = {
   owned: '所持',
   reserved: '予約済み',
   wanted: '欲しい',
+  unorganized: '未整理',
 };
 
 export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPress, onRemove }: Props) {

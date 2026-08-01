@@ -1,4 +1,4 @@
-export type GoodsStatus = 'owned' | 'reserved' | 'wanted';
+export type GoodsStatus = 'owned' | 'reserved' | 'wanted' | 'unorganized';
 
 export type Goods = {
   id: number;

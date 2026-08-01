@@ -22,6 +22,7 @@ const statuses: Array<[GoodsStatus, string]> = [
   ['owned', '所持'],
   ['reserved', '予約済み'],
   ['wanted', '欲しい'],
+  ['unorganized', '未整理'],
 ];
 
 function unique(values: string[]) {
