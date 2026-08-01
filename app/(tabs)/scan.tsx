@@ -27,7 +27,7 @@ import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
-type ScanMode = 'barcode' | 'receipt';
+type ScanMode = 'barcode' | 'receipt' | 'manual';
 type ReceiptSource = 'camera' | 'library';
 type ReceiptCandidateChoice = {
   boxName: string;
@@ -81,7 +81,10 @@ export default function ScanScreen() {
       Alert.alert(
         '手動登録に切り替えます',
         error instanceof Error ? error.message : '商品情報を取得できませんでした。',
-        [{ text: 'OK', onPress: resetScanLock }],
+        [{ text: 'OK', onPress: () => {
+          resetScanLock();
+          setMode('manual');
+        } }],
       );
       setManualJan(normalizedJan);
     } finally {
@@ -168,7 +171,7 @@ export default function ScanScreen() {
           </View>
 
           <View style={[styles.segment, { backgroundColor: colors.input }]}>
-            {(['barcode', 'receipt'] as ScanMode[]).map((value) => (
+            {(['barcode', 'receipt', 'manual'] as ScanMode[]).map((value) => (
               <Pressable
                 key={value}
                 onPress={() => setMode(value)}
@@ -176,11 +179,11 @@ export default function ScanScreen() {
               >
                 <Ionicons
                   color={mode === value ? colors.primary : colors.muted}
-                  name={value === 'barcode' ? 'barcode-outline' : 'receipt-outline'}
+                  name={value === 'barcode' ? 'barcode-outline' : value === 'receipt' ? 'receipt-outline' : 'create-outline'}
                   size={18}
                 />
                 <Text style={[styles.segmentText, { color: mode === value ? colors.text : colors.muted }]}>
-                  {value === 'barcode' ? 'バーコード' : '領収書'}
+                  {value === 'barcode' ? 'バーコード' : value === 'receipt' ? '領収書' : '手動登録'}
                 </Text>
               </Pressable>
             ))}
@@ -266,7 +269,7 @@ export default function ScanScreen() {
                 )}
               </View>
             </>
-          ) : (
+          ) : mode === 'receipt' ? (
             <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.receiptIcon}>
                 <Ionicons color={colors.primary} name="receipt-outline" size={34} />
@@ -295,12 +298,20 @@ export default function ScanScreen() {
               </View>
               {!!receiptStatus && <Text style={[styles.receiptStatus, { color: colors.muted }]}>{receiptStatus}</Text>}
             </View>
+          ) : (
+            <View>
+              <View style={[styles.manualIntro, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                <Ionicons color={colors.primary} name="create-outline" size={22} />
+                <View style={styles.manualIntroText}>
+                  <Text style={[styles.manualIntroTitle, { color: colors.text }]}>手動でグッズを登録</Text>
+                  <Text style={[styles.manualIntroBody, { color: colors.muted }]}>
+                    予約済み・欲しい・未整理など、バーコードや領収書を使わないグッズをそのまま登録できます。
+                  </Text>
+                </View>
+              </View>
+              <ManualGoodsForm initialJanCode={manualJan || null} onSubmit={addGoods} />
+            </View>
           )}
-
-          <View>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>完全手動登録</Text>
-            <ManualGoodsForm initialJanCode={manualJan || null} onSubmit={addGoods} />
-          </View>
         </ScrollView>
 
         <ProductResultModal result={result} onClose={closeResult} />
@@ -735,6 +746,18 @@ const styles = StyleSheet.create({
   receiptText: { fontSize: 13, lineHeight: 19, marginTop: 8, textAlign: 'center' },
   receiptActions: { gap: 10, marginTop: 16, width: '100%' },
   receiptStatus: { fontSize: 12, fontWeight: '800', lineHeight: 18, marginTop: 12, textAlign: 'center' },
+  manualIntro: {
+    alignItems: 'flex-start',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+    padding: 14,
+  },
+  manualIntroText: { flex: 1 },
+  manualIntroTitle: { fontSize: 16, fontWeight: '900' },
+  manualIntroBody: { fontSize: 12, fontWeight: '800', lineHeight: 18, marginTop: 4 },
   receiptButton: {
     alignItems: 'center',
     borderRadius: 8,
