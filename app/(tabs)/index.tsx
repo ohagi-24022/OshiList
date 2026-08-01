@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollToTop } from '@react-navigation/native';
 import { useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
@@ -44,6 +44,7 @@ export default function HomeScreen() {
   const [groupMode, setGroupMode] = useState<GroupMode>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [sortMode, setSortMode] = useState<SortMode>('created');
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
@@ -86,6 +87,7 @@ export default function HomeScreen() {
   }, [filtered, sortMode]);
 
   const totalQuantity = sortedGoods.reduce((sum, item) => sum + item.quantity, 0);
+  const activeSort = sortModes.find(([value]) => value === sortMode) ?? sortModes[0];
   useScrollToTop(listRef);
 
   const switchGroupMode = (nextMode: GroupMode) => {
@@ -121,6 +123,17 @@ export default function HomeScreen() {
               style={[styles.searchInput, { color: colors.text }]}
             />
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="並び替えを変更"
+            onPress={() => setSortMenuVisible(true)}
+            style={[styles.sortButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            <Ionicons color={colors.primary} name="swap-vertical-outline" size={18} />
+            <Text numberOfLines={1} style={[styles.sortButtonText, { color: colors.text }]}>
+              {activeSort[1]}
+            </Text>
+          </Pressable>
         </View>
 
         <View style={[styles.segment, { backgroundColor: colors.input }]}>
@@ -171,12 +184,17 @@ export default function HomeScreen() {
           </ScrollView>
         ) : null}
 
-        <View style={styles.sortSection}>
-          <View style={styles.sortLabelRow}>
-            <Ionicons color={colors.muted} name="swap-vertical-outline" size={16} />
-            <Text style={[styles.sortLabel, { color: colors.muted }]}>並び替え</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChips}>
+      </View>
+
+      <Modal animationType="fade" transparent visible={sortMenuVisible} onRequestClose={() => setSortMenuVisible(false)}>
+        <Pressable style={styles.sortOverlay} onPress={() => setSortMenuVisible(false)}>
+          <Pressable style={[styles.sortSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <View style={styles.sortSheetHeader}>
+              <Text style={[styles.sortSheetTitle, { color: colors.text }]}>並び替え</Text>
+              <Pressable accessibilityLabel="並び替えを閉じる" onPress={() => setSortMenuVisible(false)} style={styles.sortCloseButton}>
+                <Ionicons color={colors.text} name="close" size={22} />
+              </Pressable>
+            </View>
             {sortModes.map(([value, label, icon]) => {
               const active = sortMode === value;
               return (
@@ -184,21 +202,26 @@ export default function HomeScreen() {
                   key={value}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
-                  onPress={() => setSortMode(value)}
+                  onPress={() => {
+                    setSortMode(value);
+                    setSortMenuVisible(false);
+                  }}
                   style={[
-                    styles.sortChip,
-                    { borderColor: colors.border, backgroundColor: colors.surface },
-                    active && { backgroundColor: colors.text, borderColor: colors.text },
+                    styles.sortOption,
+                    { backgroundColor: active ? colors.surface : colors.background, borderColor: colors.border },
                   ]}
                 >
-                  <Ionicons color={active ? colors.background : colors.muted} name={icon} size={16} />
-                  <Text style={[styles.sortChipText, { color: active ? colors.background : colors.text }]}>{label}</Text>
+                  <View style={[styles.sortOptionIcon, { backgroundColor: active ? colors.primary : colors.elevated }]}>
+                    <Ionicons color={active ? '#ffffff' : colors.muted} name={icon} size={18} />
+                  </View>
+                  <Text style={[styles.sortOptionText, { color: colors.text }]}>{label}</Text>
+                  {active ? <Ionicons color={colors.primary} name="checkmark-circle" size={22} /> : null}
                 </Pressable>
               );
             })}
-          </ScrollView>
-        </View>
-      </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <FlatList
         ref={listRef}
@@ -247,16 +270,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   summaryText: { fontSize: 12, fontWeight: '800' },
-  searchRow: { marginTop: 14 },
+  searchRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 14 },
   searchBox: {
     alignItems: 'center',
     borderRadius: 8,
+    flex: 1,
     flexDirection: 'row',
     gap: 8,
     height: 44,
     paddingHorizontal: 12,
   },
   searchInput: { flex: 1, fontSize: 15 },
+  sortButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 44,
+    justifyContent: 'center',
+    maxWidth: 138,
+    minWidth: 96,
+    paddingHorizontal: 10,
+  },
+  sortButtonText: { flexShrink: 1, fontSize: 12, fontWeight: '900' },
   segment: { borderRadius: 8, flexDirection: 'row', gap: 4, marginTop: 10, padding: 4 },
   segmentButton: {
     alignItems: 'center',
@@ -278,20 +315,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   groupChipText: { fontSize: 12, fontWeight: '800' },
-  sortSection: { marginTop: 10 },
-  sortLabelRow: { alignItems: 'center', flexDirection: 'row', gap: 5, marginBottom: 7 },
-  sortLabel: { fontSize: 12, fontWeight: '900' },
-  sortChips: { gap: 8, paddingRight: 4 },
-  sortChip: {
+  sortOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sortSheet: {
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderTopWidth: 1,
+    padding: 18,
+    paddingBottom: 28,
+  },
+  sortSheetHeader: {
     alignItems: 'center',
-    borderRadius: 999,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sortSheetTitle: { fontSize: 17, fontWeight: '900' },
+  sortCloseButton: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 },
+  sortOption: {
+    alignItems: 'center',
+    borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 6,
-    minHeight: 38,
-    paddingHorizontal: 13,
+    gap: 12,
+    minHeight: 54,
+    paddingHorizontal: 12,
+    marginTop: 8,
   },
-  sortChipText: { fontSize: 12, fontWeight: '900' },
+  sortOptionIcon: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  sortOptionText: { flex: 1, fontSize: 14, fontWeight: '900' },
   listContent: { padding: 18, paddingBottom: 96 },
   gridItem: { flex: 1, maxWidth: '48.6%' },
   gridRow: { gap: 10, marginBottom: 10 },
