@@ -52,18 +52,7 @@ export default function ManageScreen() {
   const selectedGoods = useMemo(() => goods.filter((item) => selectedIds.has(item.id)), [goods, selectedIds]);
   const seriesSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.seriesName)), [goods]);
   const characterSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.characterName)), [goods]);
-  const backPreviewGoods = useMemo(() => filtered.slice(0, 3), [filtered]);
   useScrollToTop(listRef);
-  const backPreviewTranslateX = detailTranslateX.interpolate({
-    inputRange: [0, Dimensions.get('window').width],
-    outputRange: [-36, 0],
-    extrapolate: 'clamp',
-  });
-  const backPreviewOpacity = detailTranslateX.interpolate({
-    inputRange: [0, 110],
-    outputRange: [0.72, 1],
-    extrapolate: 'clamp',
-  });
 
   const closeDetail = () => {
     detailTranslateX.setValue(0);
@@ -324,49 +313,13 @@ export default function ManageScreen() {
         </View>
       </Modal>
 
-      <Modal animationType="slide" visible={!!selectedItem} onRequestClose={closeDetail}>
+      <Modal animationType="slide" transparent visible={!!selectedItem} onRequestClose={closeDetail}>
         <SafeAreaView
           onTouchEnd={finishDetailSwipe}
           onTouchMove={moveDetailWithSwipe}
           onTouchStart={rememberDetailTouchStart}
-          style={[styles.modalScreen, { backgroundColor: colors.background }]}
+          style={styles.modalScreen}
         >
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.swipeBackLayer,
-              {
-                backgroundColor: colors.background,
-                opacity: backPreviewOpacity,
-                transform: [{ translateX: backPreviewTranslateX }],
-              },
-            ]}
-          >
-            <View style={[styles.previewHeaderLayer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-              <View>
-                <Text style={[styles.previewHeaderTitle, { color: colors.text }]}>管理</Text>
-                <Text style={[styles.previewHeaderSubtitle, { color: colors.muted }]}>登録済み {goods.length}種類</Text>
-              </View>
-              <View style={[styles.previewHeaderBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons color={colors.primary} name="create-outline" size={18} />
-              </View>
-            </View>
-            <View style={styles.previewListLayer}>
-              {backPreviewGoods.map((item) => (
-                <View key={`back-preview-${item.id}`} style={[styles.previewListItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={[styles.previewImage, { backgroundColor: colors.elevated }]} />
-                  <View style={styles.previewTextBlock}>
-                    <Text numberOfLines={1} style={[styles.previewItemTitle, { color: colors.text }]}>
-                      {item.boxName}
-                    </Text>
-                    <Text numberOfLines={1} style={[styles.previewItemMeta, { color: colors.muted }]}>
-                      {item.characterName} / {item.quantity}個
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </Animated.View>
           <Animated.View
             style={[
               styles.animatedDetail,
@@ -554,47 +507,6 @@ const styles = StyleSheet.create({
   },
   saveBulkText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   modalScreen: { flex: 1 },
-  swipeBackLayer: {
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  previewHeaderLayer: {
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    height: 112,
-    justifyContent: 'space-between',
-    paddingBottom: 12,
-    paddingHorizontal: 18,
-    paddingTop: 20,
-  },
-  previewHeaderTitle: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
-  previewHeaderSubtitle: { fontSize: 12, marginTop: 2 },
-  previewHeaderBadge: {
-    alignItems: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  previewListLayer: { gap: 10, padding: 18 },
-  previewListItem: {
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 78,
-    padding: 10,
-  },
-  previewImage: { borderRadius: 6, height: 56, width: 44 },
-  previewTextBlock: { flex: 1 },
-  previewItemTitle: { fontSize: 14, fontWeight: '900' },
-  previewItemMeta: { fontSize: 12, fontWeight: '800', marginTop: 5 },
   animatedDetail: {
     borderTopLeftRadius: 10,
     borderBottomLeftRadius: 10,
