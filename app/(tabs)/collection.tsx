@@ -3,7 +3,7 @@ import { useNavigation } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
 import { useGoods } from '../../src/store/GoodsContext';
@@ -40,6 +40,7 @@ function compareByCreated(a: Goods, b: Goods) {
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { goods, loading } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
   const headerTranslateY = useRef(new Animated.Value(0)).current;
@@ -169,6 +170,7 @@ export default function HomeScreen() {
           {
             backgroundColor: colors.background,
             borderBottomColor: colors.border,
+            paddingTop: insets.top + 8,
             transform: [{ translateY: headerTranslateY }],
           },
         ]}
