@@ -12,7 +12,15 @@ function RootStack() {
   return (
     <>
       <StatusBar style={colors.background === '#050505' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ contentStyle: { backgroundColor: colors.background }, headerShown: false }} />
+      <Stack
+        screenOptions={{
+          animation: 'slide_from_right',
+          contentStyle: { backgroundColor: colors.background },
+          fullScreenGestureEnabled: true,
+          gestureEnabled: true,
+          headerShown: false,
+        }}
+      />
     </>
   );
 }

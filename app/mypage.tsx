@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { GoodsImageField } from '../../src/components/GoodsImageField';
-import { searchProductsByName } from '../../src/lib/productLookup';
-import { useGoods } from '../../src/store/GoodsContext';
-import { useProfile } from '../../src/store/ProfileContext';
-import { useAppTheme } from '../../src/store/ThemeContext';
-import { ProductSearchCandidate } from '../../src/types';
+import { GoodsImageField } from '../src/components/GoodsImageField';
+import { searchProductsByName } from '../src/lib/productLookup';
+import { useGoods } from '../src/store/GoodsContext';
+import { useProfile } from '../src/store/ProfileContext';
+import { useAppTheme } from '../src/store/ThemeContext';
+import { ProductSearchCandidate } from '../src/types';
 
 const markIconOptions: Array<[keyof typeof Ionicons.glyphMap, string]> = [
   ['heart', 'ハート'],

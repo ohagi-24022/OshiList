@@ -36,7 +36,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="マイページを開く"
-            onPress={() => router.push('/(tabs)/mypage')}
+            onPress={() => router.push('/mypage')}
             style={[styles.profileButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <Ionicons color={colors.primary} name="person-circle-outline" size={24} />
@@ -99,7 +99,7 @@ export default function HomeScreen() {
             icon="person-circle-outline"
             label="マイページ"
             text="推し設定を編集"
-            onPress={() => router.push('/(tabs)/mypage')}
+            onPress={() => router.push('/mypage')}
           />
         </View>
 

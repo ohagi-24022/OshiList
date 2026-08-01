@@ -51,13 +51,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="mypage"
-        options={{
-          title: 'マイ',
-          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="person-circle-outline" size={size} />,
-        }}
-      />
-      <Tabs.Screen
         name="settings"
         options={{
           title: '設定',
