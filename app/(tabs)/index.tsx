@@ -10,6 +10,7 @@ import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods } from '../../src/types';
 
 type GroupMode = 'all' | 'character' | 'series';
+type SortMode = 'created' | 'character' | 'seriesCharacter';
 
 const groupModes: Array<[GroupMode, string, keyof typeof Ionicons.glyphMap]> = [
   ['all', '全体', 'albums-outline'],
@@ -17,8 +18,22 @@ const groupModes: Array<[GroupMode, string, keyof typeof Ionicons.glyphMap]> = [
   ['series', 'シリーズ', 'layers-outline'],
 ];
 
+const sortModes: Array<[SortMode, string, keyof typeof Ionicons.glyphMap]> = [
+  ['created', '追加順', 'time-outline'],
+  ['character', 'キャラクター順(全体)', 'person-outline'],
+  ['seriesCharacter', 'キャラクター順(シリーズ)', 'layers-outline'],
+];
+
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+function compareText(a: string, b: string) {
+  return a.trim().localeCompare(b.trim(), 'ja', { sensitivity: 'base', numeric: true });
+}
+
+function compareByCreated(a: Goods, b: Goods) {
+  return b.id - a.id;
 }
 
 export default function HomeScreen() {
@@ -28,6 +43,7 @@ export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [groupMode, setGroupMode] = useState<GroupMode>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('created');
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
@@ -46,7 +62,30 @@ export default function HomeScreen() {
     });
   }, [groupMode, ownedGoods, query, selectedGroup]);
 
-  const totalQuantity = filtered.reduce((sum, item) => sum + item.quantity, 0);
+  const sortedGoods = useMemo(() => {
+    const nextGoods = [...filtered];
+    if (sortMode === 'character') {
+      return nextGoods.sort(
+        (a, b) =>
+          compareText(a.characterName, b.characterName) ||
+          compareText(a.seriesName, b.seriesName) ||
+          compareText(a.boxName, b.boxName) ||
+          compareByCreated(a, b),
+      );
+    }
+    if (sortMode === 'seriesCharacter') {
+      return nextGoods.sort(
+        (a, b) =>
+          compareText(a.seriesName, b.seriesName) ||
+          compareText(a.characterName, b.characterName) ||
+          compareText(a.boxName, b.boxName) ||
+          compareByCreated(a, b),
+      );
+    }
+    return nextGoods.sort(compareByCreated);
+  }, [filtered, sortMode]);
+
+  const totalQuantity = sortedGoods.reduce((sum, item) => sum + item.quantity, 0);
   useScrollToTop(listRef);
 
   const switchGroupMode = (nextMode: GroupMode) => {
@@ -131,13 +170,41 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
         ) : null}
+
+        <View style={styles.sortSection}>
+          <View style={styles.sortLabelRow}>
+            <Ionicons color={colors.muted} name="swap-vertical-outline" size={16} />
+            <Text style={[styles.sortLabel, { color: colors.muted }]}>並び替え</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChips}>
+            {sortModes.map(([value, label, icon]) => {
+              const active = sortMode === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setSortMode(value)}
+                  style={[
+                    styles.sortChip,
+                    { borderColor: colors.border, backgroundColor: colors.surface },
+                    active && { backgroundColor: colors.text, borderColor: colors.text },
+                  ]}
+                >
+                  <Ionicons color={active ? colors.background : colors.muted} name={icon} size={16} />
+                  <Text style={[styles.sortChipText, { color: active ? colors.background : colors.text }]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       </View>
 
       <FlatList
         ref={listRef}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
-        data={filtered}
+        data={sortedGoods}
         keyExtractor={(item) => String(item.id)}
         numColumns={2}
         renderItem={({ item }) => (
@@ -211,6 +278,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   groupChipText: { fontSize: 12, fontWeight: '800' },
+  sortSection: { marginTop: 10 },
+  sortLabelRow: { alignItems: 'center', flexDirection: 'row', gap: 5, marginBottom: 7 },
+  sortLabel: { fontSize: 12, fontWeight: '900' },
+  sortChips: { gap: 8, paddingRight: 4 },
+  sortChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 38,
+    paddingHorizontal: 13,
+  },
+  sortChipText: { fontSize: 12, fontWeight: '900' },
   listContent: { padding: 18, paddingBottom: 96 },
   gridItem: { flex: 1, maxWidth: '48.6%' },
   gridRow: { gap: 10, marginBottom: 10 },
