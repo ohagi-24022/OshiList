@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -37,6 +38,7 @@ function compareByCreated(a: Goods, b: Goods) {
 }
 
 export default function HomeScreen() {
+  const navigation = useNavigation();
   const { colors } = useAppTheme();
   const { goods, loading } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
@@ -111,6 +113,28 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   };
+
+  useEffect(() => {
+    const tabNavigation = navigation as unknown as {
+      addListener: (eventName: 'tabPress', callback: () => void) => () => void;
+    };
+    const unsubscribe = tabNavigation.addListener('tabPress', () => {
+      lastScrollYRef.current = 0;
+      headerHiddenRef.current = false;
+      Animated.timing(headerTranslateY, {
+        duration: 180,
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+    });
+    return unsubscribe;
+  }, [headerTranslateY, navigation]);
+
+  useEffect(() => {
+    if (headerHiddenRef.current) {
+      headerTranslateY.setValue(-headerHeight);
+    }
+  }, [headerHeight, headerTranslateY]);
 
   const handleListScroll = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = Math.max(0, event.nativeEvent.contentOffset.y);

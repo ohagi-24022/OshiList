@@ -1,6 +1,7 @@
+import { useScrollToTop } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,6 +16,7 @@ export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { goods, loading } = useGoods();
   const { profile } = useProfile();
+  const scrollRef = useRef<ScrollView>(null);
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const oshiGoods = useMemo(() => ownedGoods.filter((item) => isOshiGoods(item, profile)), [ownedGoods, profile]);
@@ -22,10 +24,11 @@ export default function HomeScreen() {
   const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
   const totalQuantity = ownedGoods.reduce((sum, item) => sum + item.quantity, 0);
   const oshiQuantity = oshiGoods.reduce((sum, item) => sum + item.quantity, 0);
+  useScrollToTop(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>ホーム</Text>
