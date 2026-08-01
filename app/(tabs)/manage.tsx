@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollToTop } from '@react-navigation/native';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -53,6 +53,17 @@ export default function ManageScreen() {
   const seriesSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.seriesName)), [goods]);
   const characterSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.characterName)), [goods]);
   useScrollToTop(listRef);
+
+  useEffect(() => {
+    if (!selected) return;
+
+    detailTranslateX.setValue(Dimensions.get('window').width);
+    Animated.timing(detailTranslateX, {
+      duration: 180,
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [detailTranslateX, selected]);
 
   const closeDetail = () => {
     detailTranslateX.setValue(0);
@@ -313,7 +324,7 @@ export default function ManageScreen() {
         </View>
       </Modal>
 
-      <Modal animationType="slide" transparent visible={!!selectedItem} onRequestClose={closeDetail}>
+      <Modal animationType="none" transparent visible={!!selectedItem} onRequestClose={closeDetail}>
         <SafeAreaView
           onTouchEnd={finishDetailSwipe}
           onTouchMove={moveDetailWithSwipe}
