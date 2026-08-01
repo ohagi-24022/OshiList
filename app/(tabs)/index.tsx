@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollToTop } from '@react-navigation/native';
 import { useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
@@ -40,11 +40,15 @@ export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { goods, loading } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
+  const headerTranslateY = useRef(new Animated.Value(0)).current;
+  const headerHiddenRef = useRef(false);
+  const lastScrollYRef = useRef(0);
   const [query, setQuery] = useState('');
   const [groupMode, setGroupMode] = useState<GroupMode>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [sortMode, setSortMode] = useState<SortMode>('created');
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(190);
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
@@ -87,17 +91,64 @@ export default function HomeScreen() {
   }, [filtered, sortMode]);
 
   const totalQuantity = sortedGoods.reduce((sum, item) => sum + item.quantity, 0);
-  const activeSort = sortModes.find(([value]) => value === sortMode) ?? sortModes[0];
+  const visibleSortModes = useMemo(
+    () =>
+      sortModes.filter(([value]) => {
+        if (groupMode === 'character') return value !== 'character';
+        if (groupMode === 'series') return value !== 'seriesCharacter';
+        return true;
+      }),
+    [groupMode],
+  );
   useScrollToTop(listRef);
+
+  const setHeaderHidden = (hidden: boolean) => {
+    if (headerHiddenRef.current === hidden) return;
+    headerHiddenRef.current = hidden;
+    Animated.timing(headerTranslateY, {
+      duration: 180,
+      toValue: hidden ? -headerHeight : 0,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleListScroll = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = Math.max(0, event.nativeEvent.contentOffset.y);
+    const delta = y - lastScrollYRef.current;
+    lastScrollYRef.current = y;
+
+    if (y < 24) {
+      setHeaderHidden(false);
+      return;
+    }
+    if (delta > 10 && y > headerHeight * 0.45) {
+      setHeaderHidden(true);
+    } else if (delta < -10) {
+      setHeaderHidden(false);
+    }
+  };
 
   const switchGroupMode = (nextMode: GroupMode) => {
     setGroupMode(nextMode);
     setSelectedGroup('all');
+    if ((nextMode === 'character' && sortMode === 'character') || (nextMode === 'series' && sortMode === 'seriesCharacter')) {
+      setSortMode('created');
+    }
   };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <Animated.View
+        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+            transform: [{ translateY: headerTranslateY }],
+          },
+        ]}
+      >
         <View style={styles.titleRow}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>OshiList</Text>
@@ -130,9 +181,6 @@ export default function HomeScreen() {
             style={[styles.sortButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <Ionicons color={colors.primary} name="swap-vertical-outline" size={18} />
-            <Text numberOfLines={1} style={[styles.sortButtonText, { color: colors.text }]}>
-              {activeSort[1]}
-            </Text>
           </Pressable>
         </View>
 
@@ -184,7 +232,7 @@ export default function HomeScreen() {
           </ScrollView>
         ) : null}
 
-      </View>
+      </Animated.View>
 
       <Modal animationType="fade" transparent visible={sortMenuVisible} onRequestClose={() => setSortMenuVisible(false)}>
         <Pressable style={styles.sortOverlay} onPress={() => setSortMenuVisible(false)}>
@@ -195,7 +243,7 @@ export default function HomeScreen() {
                 <Ionicons color={colors.text} name="close" size={22} />
               </Pressable>
             </View>
-            {sortModes.map(([value, label, icon]) => {
+            {visibleSortModes.map(([value, label, icon]) => {
               const active = sortMode === value;
               return (
                 <Pressable
@@ -226,10 +274,12 @@ export default function HomeScreen() {
       <FlatList
         ref={listRef}
         columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingTop: headerHeight + 18 }]}
         data={sortedGoods}
         keyExtractor={(item) => String(item.id)}
         numColumns={2}
+        onScroll={handleListScroll}
+        scrollEventThrottle={16}
         renderItem={({ item }) => (
           <View style={styles.gridItem}>
             <HomeGoodsTile item={item} />
@@ -253,9 +303,19 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: {
     borderBottomWidth: 1,
+    elevation: 8,
+    left: 0,
     paddingBottom: 12,
     paddingHorizontal: 18,
     paddingTop: 8,
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#000000',
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    top: 0,
+    zIndex: 10,
   },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
@@ -285,15 +345,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
     height: 44,
     justifyContent: 'center',
-    maxWidth: 138,
-    minWidth: 96,
-    paddingHorizontal: 10,
+    width: 44,
   },
-  sortButtonText: { flexShrink: 1, fontSize: 12, fontWeight: '900' },
   segment: { borderRadius: 8, flexDirection: 'row', gap: 4, marginTop: 10, padding: 4 },
   segmentButton: {
     alignItems: 'center',
