@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useGoods } from '../store/GoodsContext';
@@ -15,6 +15,7 @@ type Props = {
   initialCharacterName?: string;
   initialVariantName?: string;
   initialImageUrl?: string | null;
+  initialIsRandom?: boolean;
   onSubmit: (input: GoodsInput) => Promise<void>;
 };
 
@@ -36,6 +37,7 @@ export function ManualGoodsForm({
   initialCharacterName = '',
   initialVariantName = '通常版',
   initialImageUrl = null,
+  initialIsRandom = false,
   onSubmit,
 }: Props) {
   const { colors } = useAppTheme();
@@ -46,10 +48,19 @@ export function ManualGoodsForm({
   const [characterName, setCharacterName] = useState(initialCharacterName);
   const [variantName, setVariantName] = useState(initialVariantName);
   const [imageUrl, setImageUrl] = useState(initialImageUrl ?? '');
-  const [isRandom, setIsRandom] = useState(false);
+  const [isRandom, setIsRandom] = useState(initialIsRandom);
   const [quantity, setQuantity] = useState('1');
   const [status, setStatus] = useState<GoodsStatus>('owned');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setBoxName(initialBoxName);
+    setSeriesName(initialSeriesName);
+    setCharacterName(initialCharacterName);
+    setVariantName(initialVariantName);
+    setImageUrl(initialImageUrl ?? '');
+    setIsRandom(initialIsRandom);
+  }, [initialBoxName, initialSeriesName, initialCharacterName, initialVariantName, initialImageUrl, initialIsRandom]);
 
   const seriesSuggestions = useMemo(() => unique(goods.map((item) => item.seriesName)), [goods]);
   const characterSuggestions = useMemo(() => unique(goods.map((item) => item.characterName)), [goods]);
@@ -92,7 +103,7 @@ export function ManualGoodsForm({
       setCharacterName('');
       setVariantName('通常版');
       setImageUrl('');
-      setIsRandom(false);
+      setIsRandom(initialIsRandom);
       setQuantity('1');
       setStatus('owned');
     } finally {

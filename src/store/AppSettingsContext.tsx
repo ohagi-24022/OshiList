@@ -3,6 +3,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useSt
 
 type AppSettings = {
   exchangeEnabled: boolean;
+  groupRandomGoods: boolean;
 };
 
 type AppSettingsContextValue = {
@@ -14,6 +15,7 @@ const STORAGE_KEY = 'oshilist.appSettings.v1';
 
 const defaultSettings: AppSettings = {
   exchangeEnabled: false,
+  groupRandomGoods: false,
 };
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);

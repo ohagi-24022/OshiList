@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useScrollToTop } from '@react-navigation/native';
+import { useIsFocused, useScrollToTop } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
 import { requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
 import { lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
+import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, ProductLookupResult, ReceiptParseResult } from '../../src/types';
@@ -41,6 +42,7 @@ export default function ScanScreen() {
   const { colors } = useAppTheme();
   const { addGoods } = useGoods();
   const scrollRef = useRef<ScrollView>(null);
+  const isFocused = useIsFocused();
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<ScanMode>('barcode');
   const [torch, setTorch] = useState(false);
@@ -156,7 +158,7 @@ export default function ScanScreen() {
     }
   };
 
-  const cameraReady = Platform.OS !== 'web' && permission?.granted;
+  const cameraReady = Platform.OS !== 'web' && permission?.granted && isFocused && mode === 'barcode';
   useScrollToTop(scrollRef);
 
   return (
@@ -329,6 +331,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
     () => Array.from(new Set(goods.map((item) => item.seriesName).filter(Boolean))).slice(0, 10),
     [goods],
   );
+  const inferredIsRandom = result ? inferIsRandomGoods(result.boxName, result.lineup.length) : false;
 
   useEffect(() => {
     setSeriesName('');
@@ -392,7 +395,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                           characterName: candidate.characterName,
                           variantName: candidate.variantName,
                           imageUrl: result.imageUrl,
-                          isRandom: true,
+                          isRandom: inferredIsRandom,
                         });
                         onClose();
                       }}
@@ -411,6 +414,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                     initialBoxName={result.boxName}
                     initialSeriesName={seriesName}
                     initialImageUrl={result.imageUrl}
+                    initialIsRandom={inferredIsRandom}
                     onSubmit={async (input) => {
                       await addGoods(input);
                       onClose();
@@ -510,6 +514,7 @@ function ReceiptResultModal({ result, onClose }: { result: ReceiptParseResult | 
         characterName: '未分類',
         variantName: '通常版',
         imageUrl: candidate.imageUrl,
+        isRandom: inferIsRandomGoods(candidate.boxName),
       });
     }
     closeReceiptModal();

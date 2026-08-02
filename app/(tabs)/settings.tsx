@@ -87,6 +87,33 @@ export default function SettingsScreen() {
         </View>
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.panelTitle, { color: colors.text }]}>コレクション表示</Text>
+          <View style={[styles.inlineSettingBox, { backgroundColor: colors.elevated }]}>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: settings.groupRandomGoods }}
+              onPress={() => updateSettings({ groupRandomGoods: !settings.groupRandomGoods })}
+              style={styles.inlineSettingRow}
+            >
+              <View style={styles.settingText}>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>ランダムグッズをまとめて表示</Text>
+                <Text style={[styles.settingHelp, { color: colors.muted }]}>
+                  コレクションタブでは同じ親商品のランダムグッズを1つにまとめ、タップで内訳を確認できます。
+                </Text>
+              </View>
+              <View style={[styles.switchTrack, { backgroundColor: settings.groupRandomGoods ? colors.primary : colors.border }]}>
+                <View
+                  style={[
+                    styles.switchThumb,
+                    { backgroundColor: colors.surface, transform: [{ translateX: settings.groupRandomGoods ? 20 : 0 }] },
+                  ]}
+                />
+              </View>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>テーマプリセット</Text>
           {!!customPresets.length && (
             <Text style={[styles.panelHelp, { color: colors.muted }]}>
@@ -203,6 +230,15 @@ const styles = StyleSheet.create({
   settingText: { flex: 1 },
   settingTitle: { fontSize: 15, fontWeight: '900' },
   settingHelp: { fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 4 },
+  inlineSettingBox: { borderRadius: 8, marginBottom: 12 },
+  inlineSettingRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 74,
+    padding: 12,
+  },
   switchTrack: {
     borderRadius: 999,
     height: 30,
