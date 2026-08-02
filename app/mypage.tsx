@@ -25,7 +25,7 @@ const markColorOptions = ['#e94f7d', '#f5a400', '#7b61ff', '#00a7b5', '#31c759',
 export default function MyPageScreen() {
   const { colors } = useAppTheme();
   const { goods } = useGoods();
-  const { profile, updateProfile } = useProfile();
+  const { activeProfileId, addProfilePreset, profile, profiles, removeProfile, selectProfile, updateProfile } = useProfile();
   const scrollRef = useRef<ScrollView>(null);
   const [oshiName, setOshiName] = useState(profile.oshiName);
   const [seriesName, setSeriesName] = useState(profile.seriesName);
@@ -108,6 +108,30 @@ export default function MyPageScreen() {
     Alert.alert('保存しました', 'マイページに推し設定を反映しました。');
   };
 
+  const saveAsPreset = async () => {
+    const name = oshiName.trim();
+    if (!name) {
+      Alert.alert('推し名を入力してください', '推しプリセットにはキャラクター名が必要です。');
+      return;
+    }
+    await addProfilePreset({
+      oshiName: name,
+      seriesName: seriesName.trim(),
+      imageUrl: imageUrl.trim() || null,
+      note: note.trim(),
+      markIcon,
+      markColor: markColor.trim() || null,
+    });
+    Alert.alert('推しを追加しました', '新しい推しプリセットとして保存しました。');
+  };
+
+  const confirmRemoveProfile = (id: string, name: string) => {
+    Alert.alert('推しプリセットを削除しますか？', name || '推し未設定', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '削除', style: 'destructive', onPress: () => removeProfile(id) },
+    ]);
+  };
+
   const allCandidates = [...localImageCandidates, ...imageCandidates];
   useScrollToTop(scrollRef);
 
@@ -143,6 +167,31 @@ export default function MyPageScreen() {
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>推し設定</Text>
+
+          <Text style={[styles.label, { color: colors.muted }]}>推しプリセット</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.profilePresetRow}>
+            {profiles.map((item) => {
+              const active = item.id === activeProfileId;
+              const icon = (item.markIcon || 'heart') as keyof typeof Ionicons.glyphMap;
+              const color = item.markColor || colors.primary;
+              return (
+                <Pressable
+                  key={item.id}
+                  onLongPress={() => profiles.length > 1 && confirmRemoveProfile(item.id, item.oshiName)}
+                  onPress={() => selectProfile(item.id)}
+                  style={[
+                    styles.profilePresetChip,
+                    { backgroundColor: active ? colors.text : colors.elevated, borderColor: active ? colors.text : colors.border },
+                  ]}
+                >
+                  <Ionicons color={active ? colors.background : color} name={icon} size={16} />
+                  <Text numberOfLines={1} style={[styles.profilePresetText, { color: active ? colors.background : colors.text }]}>
+                    {item.oshiName || '推し未設定'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
           <Text style={[styles.label, { color: colors.muted }]}>推し名</Text>
           <TextInput
@@ -255,6 +304,10 @@ export default function MyPageScreen() {
             <Ionicons color="#ffffff" name="save-outline" size={18} />
             <Text style={styles.saveText}>保存</Text>
           </Pressable>
+          <Pressable onPress={saveAsPreset} style={[styles.secondarySaveButton, { borderColor: colors.border }]}>
+            <Ionicons color={colors.text} name="add-circle-outline" size={18} />
+            <Text style={[styles.secondarySaveText, { color: colors.text }]}>新しい推しとして保存</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -302,6 +355,18 @@ const styles = StyleSheet.create({
   panel: { borderRadius: 8, borderWidth: 1, padding: 14 },
   panelTitle: { fontSize: 16, fontWeight: '900', marginBottom: 2 },
   label: { fontSize: 12, fontWeight: '700', marginBottom: 7, marginTop: 12 },
+  profilePresetRow: { gap: 8, paddingBottom: 2 },
+  profilePresetChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 36,
+    maxWidth: 160,
+    paddingHorizontal: 12,
+  },
+  profilePresetText: { fontSize: 12, fontWeight: '900' },
   input: {
     borderRadius: 8,
     fontSize: 15,
@@ -383,4 +448,15 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   saveText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
+  secondarySaveButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 46,
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  secondarySaveText: { fontSize: 14, fontWeight: '900' },
 });

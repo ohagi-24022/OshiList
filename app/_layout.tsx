@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { GoodsProvider } from '../src/store/GoodsContext';
+import { AppSettingsProvider } from '../src/store/AppSettingsContext';
 import { ProfileProvider } from '../src/store/ProfileContext';
 import { RegistrationPresetProvider } from '../src/store/RegistrationPresetContext';
 import { ThemeProvider, useAppTheme } from '../src/store/ThemeContext';
@@ -30,9 +31,11 @@ export default function Layout() {
     <ThemeProvider>
       <ProfileProvider>
         <RegistrationPresetProvider>
-          <GoodsProvider>
-            <RootStack />
-          </GoodsProvider>
+          <AppSettingsProvider>
+            <GoodsProvider>
+              <RootStack />
+            </GoodsProvider>
+          </AppSettingsProvider>
         </RegistrationPresetProvider>
       </ProfileProvider>
     </ThemeProvider>

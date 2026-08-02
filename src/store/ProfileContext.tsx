@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
 export type OshiProfile = {
+  id: string;
   oshiName: string;
   seriesName: string;
   imageUrl: string | null;
@@ -12,12 +13,18 @@ export type OshiProfile = {
 
 type ProfileContextValue = {
   profile: OshiProfile;
+  profiles: OshiProfile[];
+  activeProfileId: string;
   updateProfile: (patch: Partial<OshiProfile>) => Promise<void>;
+  addProfilePreset: (input: Partial<OshiProfile>) => Promise<void>;
+  selectProfile: (id: string) => Promise<void>;
+  removeProfile: (id: string) => Promise<void>;
 };
 
 const PROFILE_STORAGE_KEY = 'oshilist.profile.v1';
 
 const defaultProfile: OshiProfile = {
+  id: 'default-oshi',
   oshiName: '',
   seriesName: '',
   imageUrl: null,
@@ -26,35 +33,93 @@ const defaultProfile: OshiProfile = {
   markColor: null,
 };
 
+type StoredProfileState = {
+  activeProfileId: string;
+  profiles: OshiProfile[];
+};
+
 const ProfileContext = createContext<ProfileContextValue | null>(null);
 
-function readStoredProfile(stored: string): OshiProfile {
+function normalizeProfile(input: Partial<OshiProfile>, fallbackId = `oshi-${Date.now()}`): OshiProfile {
+  return {
+    ...defaultProfile,
+    ...input,
+    id: input.id || fallbackId,
+  };
+}
+
+function readStoredProfileState(stored: string): StoredProfileState {
   try {
-    const parsed = JSON.parse(stored) as Partial<OshiProfile>;
-    return { ...defaultProfile, ...parsed };
+    const parsed = JSON.parse(stored) as Partial<OshiProfile> | Partial<StoredProfileState>;
+    if ('profiles' in parsed && Array.isArray(parsed.profiles)) {
+      const profiles = parsed.profiles.map((item, index) => normalizeProfile(item, item.id || `oshi-${index}`));
+      const activeProfileId = parsed.activeProfileId && profiles.some((item) => item.id === parsed.activeProfileId)
+        ? parsed.activeProfileId
+        : profiles[0]?.id ?? defaultProfile.id;
+      return {
+        activeProfileId,
+        profiles: profiles.length ? profiles : [defaultProfile],
+      };
+    }
+    const profile = normalizeProfile(parsed as Partial<OshiProfile>, defaultProfile.id);
+    return { activeProfileId: profile.id, profiles: [profile] };
   } catch {
-    return defaultProfile;
+    return { activeProfileId: defaultProfile.id, profiles: [defaultProfile] };
   }
 }
 
+function serializeProfileState(activeProfileId: string, profiles: OshiProfile[]) {
+  return JSON.stringify({ activeProfileId, profiles });
+}
+
 export function ProfileProvider({ children }: PropsWithChildren) {
-  const [profile, setProfile] = useState<OshiProfile>(defaultProfile);
+  const [profiles, setProfiles] = useState<OshiProfile[]>([defaultProfile]);
+  const [activeProfileId, setActiveProfileId] = useState(defaultProfile.id);
+  const profile = profiles.find((item) => item.id === activeProfileId) ?? profiles[0] ?? defaultProfile;
 
   useEffect(() => {
     AsyncStorage.getItem(PROFILE_STORAGE_KEY).then((stored) => {
       if (stored) {
-        setProfile(readStoredProfile(stored));
+        const state = readStoredProfileState(stored);
+        setProfiles(state.profiles);
+        setActiveProfileId(state.activeProfileId);
       }
     });
   }, []);
 
   const updateProfile = async (patch: Partial<OshiProfile>) => {
-    const nextProfile = { ...profile, ...patch };
-    setProfile(nextProfile);
-    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
+    const nextProfiles = profiles.map((item) => (item.id === profile.id ? normalizeProfile({ ...item, ...patch }, item.id) : item));
+    setProfiles(nextProfiles);
+    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, serializeProfileState(profile.id, nextProfiles));
   };
 
-  const value = useMemo(() => ({ profile, updateProfile }), [profile]);
+  const addProfilePreset = async (input: Partial<OshiProfile>) => {
+    const nextProfile = normalizeProfile(input, `oshi-${Date.now()}`);
+    const nextProfiles = [nextProfile, ...profiles];
+    setProfiles(nextProfiles);
+    setActiveProfileId(nextProfile.id);
+    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, serializeProfileState(nextProfile.id, nextProfiles));
+  };
+
+  const selectProfile = async (id: string) => {
+    if (!profiles.some((item) => item.id === id)) return;
+    setActiveProfileId(id);
+    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, serializeProfileState(id, profiles));
+  };
+
+  const removeProfile = async (id: string) => {
+    if (profiles.length <= 1) return;
+    const nextProfiles = profiles.filter((item) => item.id !== id);
+    const nextActiveId = activeProfileId === id ? nextProfiles[0].id : activeProfileId;
+    setProfiles(nextProfiles);
+    setActiveProfileId(nextActiveId);
+    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, serializeProfileState(nextActiveId, nextProfiles));
+  };
+
+  const value = useMemo(
+    () => ({ profile, profiles, activeProfileId, updateProfile, addProfilePreset, selectProfile, removeProfile }),
+    [activeProfileId, profile, profiles],
+  );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }

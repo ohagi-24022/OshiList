@@ -6,10 +6,12 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useGoods } from '../../src/store/GoodsContext';
+import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 
 export default function SettingsScreen() {
   const { colors, presets, setPreset, customPresets, deleteCustomPreset } = useAppTheme();
+  const { settings, updateSettings } = useAppSettings();
   const { goods } = useGoods();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
@@ -58,6 +60,31 @@ export default function SettingsScreen() {
           <Text style={styles.designButtonText}>自分でデザインする</Text>
           <Ionicons color="#ffffff" name="chevron-forward" size={18} />
         </Pressable>
+
+        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.panelTitle, { color: colors.text }]}>交換管理</Text>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: settings.exchangeEnabled }}
+            onPress={() => updateSettings({ exchangeEnabled: !settings.exchangeEnabled })}
+            style={[styles.settingRow, { backgroundColor: colors.elevated }]}
+          >
+            <View style={styles.settingText}>
+              <Text style={[styles.settingTitle, { color: colors.text }]}>交換可能グッズを表示</Text>
+              <Text style={[styles.settingHelp, { color: colors.muted }]}>
+                所持数が2個以上のグッズをホームに交換候補として表示します。
+              </Text>
+            </View>
+            <View style={[styles.switchTrack, { backgroundColor: settings.exchangeEnabled ? colors.primary : colors.border }]}>
+              <View
+                style={[
+                  styles.switchThumb,
+                  { backgroundColor: colors.surface, transform: [{ translateX: settings.exchangeEnabled ? 20 : 0 }] },
+                ]}
+              />
+            </View>
+          </Pressable>
+        </View>
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>テーマプリセット</Text>
@@ -165,4 +192,27 @@ const styles = StyleSheet.create({
   customBadge: { fontSize: 10, fontWeight: '800' },
   dataRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 10 },
   dataText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  settingRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 74,
+    padding: 12,
+  },
+  settingText: { flex: 1 },
+  settingTitle: { fontSize: 15, fontWeight: '900' },
+  settingHelp: { fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 4 },
+  switchTrack: {
+    borderRadius: 999,
+    height: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    width: 56,
+  },
+  switchThumb: {
+    borderRadius: 999,
+    height: 24,
+    width: 24,
+  },
 });
