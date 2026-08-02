@@ -18,13 +18,22 @@ type RegistrationPresetContextValue = {
 const STORAGE_KEY = 'oshilist.registrationPresets.v1';
 const RegistrationPresetContext = createContext<RegistrationPresetContextValue | null>(null);
 
+function readStoredPresets(stored: string): RegistrationPreset[] {
+  try {
+    const parsed = JSON.parse(stored) as RegistrationPreset[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function RegistrationPresetProvider({ children }: PropsWithChildren) {
   const [presets, setPresets] = useState<RegistrationPreset[]>([]);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
       if (stored) {
-        setPresets(JSON.parse(stored) as RegistrationPreset[]);
+        setPresets(readStoredPresets(stored));
       }
     });
   }, []);
@@ -35,8 +44,22 @@ export function RegistrationPresetProvider({ children }: PropsWithChildren) {
   };
 
   const addPreset = async (input: Omit<RegistrationPreset, 'id'>) => {
+    const normalized = {
+      name: input.name.trim(),
+      seriesName: input.seriesName.trim(),
+      characterName: input.characterName.trim(),
+      variantName: input.variantName.trim(),
+    };
+    const exists = presets.some(
+      (preset) =>
+        preset.seriesName.trim() === normalized.seriesName &&
+        preset.characterName.trim() === normalized.characterName &&
+        preset.variantName.trim() === normalized.variantName,
+    );
+    if (exists) return;
+
     const nextPreset: RegistrationPreset = {
-      ...input,
+      ...normalized,
       id: `registration-${Date.now()}`,
     };
     await persistPresets([nextPreset, ...presets]);

@@ -3,7 +3,7 @@ import { useScrollToTop } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -329,6 +329,10 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
     () => Array.from(new Set(goods.map((item) => item.seriesName).filter(Boolean))).slice(0, 10),
     [goods],
   );
+
+  useEffect(() => {
+    setSeriesName('');
+  }, [result?.janCode, result?.boxName]);
 
   return (
     <Modal animationType="slide" transparent visible={!!result} onRequestClose={onClose}>

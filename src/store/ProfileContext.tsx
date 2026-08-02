@@ -28,13 +28,22 @@ const defaultProfile: OshiProfile = {
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
 
+function readStoredProfile(stored: string): OshiProfile {
+  try {
+    const parsed = JSON.parse(stored) as Partial<OshiProfile>;
+    return { ...defaultProfile, ...parsed };
+  } catch {
+    return defaultProfile;
+  }
+}
+
 export function ProfileProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<OshiProfile>(defaultProfile);
 
   useEffect(() => {
     AsyncStorage.getItem(PROFILE_STORAGE_KEY).then((stored) => {
       if (stored) {
-        setProfile({ ...defaultProfile, ...(JSON.parse(stored) as Partial<OshiProfile>) });
+        setProfile(readStoredProfile(stored));
       }
     });
   }, []);

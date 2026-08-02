@@ -3,6 +3,10 @@ import * as ImagePicker from 'expo-image-picker';
 
 const IMAGE_DIR = `${FileSystem.documentDirectory ?? ''}goods-images/`;
 
+export function isManagedLocalImage(uri: string | null | undefined) {
+  return !!uri && !!FileSystem.documentDirectory && uri.startsWith(IMAGE_DIR);
+}
+
 async function ensureImageDir() {
   if (!FileSystem.documentDirectory) {
     throw new Error('画像の保存先を準備できませんでした。');
@@ -26,6 +30,12 @@ async function persistPickedImage(uri: string) {
   const destination = `${IMAGE_DIR}${Date.now()}.${extension}`;
   await FileSystem.copyAsync({ from: uri, to: destination });
   return destination;
+}
+
+export async function deleteManagedLocalImage(uri: string | null | undefined) {
+  const localUri = uri ?? '';
+  if (!isManagedLocalImage(localUri)) return;
+  await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
 }
 
 async function persistPickerResult(result: ImagePicker.ImagePickerResult) {

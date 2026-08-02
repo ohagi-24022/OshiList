@@ -185,6 +185,15 @@ function asEditableTheme(theme: ThemePreset): ThemePreset {
   };
 }
 
+function readStoredJson<T>(stored: string | null): T | null {
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function ThemeProvider({ children }: PropsWithChildren) {
   const systemMode = useColorScheme();
   const [theme, setTheme] = useState<ThemePreset>(() => (systemMode === 'dark' ? darkPreset : builtInPresets[0]));
@@ -199,11 +208,13 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     ]).then((entries) => {
       const storedTheme = entries[0][1] ?? entries[1][1];
       const storedCustomPresets = entries[2][1] ?? entries[3][1];
-      if (storedCustomPresets) {
-        setCustomPresets(JSON.parse(storedCustomPresets) as ThemePreset[]);
+      const nextCustomPresets = readStoredJson<ThemePreset[]>(storedCustomPresets);
+      const nextTheme = readStoredJson<ThemePreset>(storedTheme);
+      if (Array.isArray(nextCustomPresets)) {
+        setCustomPresets(nextCustomPresets);
       }
-      if (storedTheme) {
-        setTheme(JSON.parse(storedTheme) as ThemePreset);
+      if (nextTheme) {
+        setTheme(nextTheme);
       }
     });
   }, []);

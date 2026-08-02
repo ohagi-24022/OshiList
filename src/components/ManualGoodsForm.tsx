@@ -55,7 +55,7 @@ export function ManualGoodsForm({
   const variantSuggestions = useMemo(() => unique(goods.map((item) => item.variantName)), [goods]);
 
   const disabled = !boxName.trim() || saving;
-  const canSavePreset = !!seriesName.trim() || !!characterName.trim() || !!variantName.trim();
+  const canSavePreset = !!seriesName.trim() || !!characterName.trim();
 
   const savePreset = async () => {
     if (!canSavePreset) return;

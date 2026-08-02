@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { Goods, GoodsInput, GoodsStatus } from '../types';
+import { deleteManagedLocalImage } from '../lib/localImage';
 
 type GoodsContextValue = {
   goods: Goods[];
@@ -17,6 +18,19 @@ type GoodsContextValue = {
 const GoodsContext = createContext<GoodsContextValue | null>(null);
 
 const db = SQLite.openDatabaseSync('oshilist.db');
+
+function normalizedGoodsInput(input: GoodsInput) {
+  return {
+    janCode: input.janCode?.trim() || null,
+    boxName: input.boxName.trim(),
+    seriesName: input.seriesName?.trim() || 'シリーズ未設定',
+    characterName: input.characterName.trim() || '未分類',
+    variantName: input.variantName.trim() || '通常版',
+    quantity: Math.max(0, input.quantity ?? 1),
+    imageUrl: input.imageUrl ?? null,
+    status: input.status ?? 'owned',
+  };
+}
 
 function mapGoods(row: Record<string, unknown>): Goods {
   return {
@@ -79,17 +93,53 @@ export function GoodsProvider({ children }: PropsWithChildren) {
 
   const addGoods = useCallback(
     async (input: GoodsInput) => {
+      const normalized = normalizedGoodsInput(input);
+      const existing = await db.getFirstAsync<{ id: number; image_url: string | null }>(
+        `SELECT id, image_url
+         FROM goods
+         WHERE jan_code IS ?
+           AND series_name = ?
+           AND character_name = ?
+           AND variant_name = ?
+           AND status = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        normalized.janCode,
+        normalized.seriesName,
+        normalized.characterName,
+        normalized.variantName,
+        normalized.status,
+      );
+
+      if (existing) {
+        await db.runAsync(
+          `UPDATE goods
+           SET quantity = quantity + ?,
+               image_url = COALESCE(image_url, ?),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          normalized.quantity,
+          normalized.imageUrl,
+          existing.id,
+        );
+        if (normalized.imageUrl && existing.image_url && existing.image_url !== normalized.imageUrl) {
+          await deleteManagedLocalImage(normalized.imageUrl);
+        }
+        await refresh();
+        return;
+      }
+
       await db.runAsync(
         `INSERT INTO goods (jan_code, box_name, series_name, character_name, variant_name, quantity, image_url, status, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        input.janCode ?? null,
-        input.boxName.trim(),
-        input.seriesName?.trim() || 'シリーズ未設定',
-        input.characterName.trim() || '未分類',
-        input.variantName.trim() || '通常版',
-        input.quantity ?? 1,
-        input.imageUrl ?? null,
-        input.status ?? 'owned',
+        normalized.janCode,
+        normalized.boxName,
+        normalized.seriesName,
+        normalized.characterName,
+        normalized.variantName,
+        normalized.quantity,
+        normalized.imageUrl,
+        normalized.status,
       );
       await refresh();
     },
@@ -112,6 +162,8 @@ export function GoodsProvider({ children }: PropsWithChildren) {
 
   const updateGoods = useCallback(
     async (id: number, input: GoodsInput) => {
+      const previous = await db.getFirstAsync<{ image_url: string | null }>('SELECT image_url FROM goods WHERE id = ?', id);
+      const normalized = normalizedGoodsInput(input);
       await db.runAsync(
         `UPDATE goods
          SET jan_code = ?,
@@ -124,16 +176,19 @@ export function GoodsProvider({ children }: PropsWithChildren) {
              status = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        input.janCode ?? null,
-        input.boxName.trim(),
-        input.seriesName?.trim() || 'シリーズ未設定',
-        input.characterName.trim() || '未分類',
-        input.variantName.trim() || '通常版',
+        normalized.janCode,
+        normalized.boxName,
+        normalized.seriesName,
+        normalized.characterName,
+        normalized.variantName,
         Math.max(0, input.quantity ?? 0),
-        input.imageUrl ?? null,
-        input.status ?? 'owned',
+        normalized.imageUrl,
+        normalized.status,
         id,
       );
+      if (previous?.image_url && previous.image_url !== normalized.imageUrl) {
+        await deleteManagedLocalImage(previous.image_url);
+      }
       await refresh();
     },
     [refresh],
@@ -170,7 +225,9 @@ export function GoodsProvider({ children }: PropsWithChildren) {
 
   const removeGoods = useCallback(
     async (id: number) => {
+      const previous = await db.getFirstAsync<{ image_url: string | null }>('SELECT image_url FROM goods WHERE id = ?', id);
       await db.runAsync('DELETE FROM goods WHERE id = ?', id);
+      await deleteManagedLocalImage(previous?.image_url);
       await refresh();
     },
     [refresh],
