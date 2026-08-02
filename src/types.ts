@@ -9,6 +9,7 @@ export type Goods = {
   variantName: string;
   quantity: number;
   imageUrl: string | null;
+  isRandom: boolean;
   status: GoodsStatus;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +23,7 @@ export type GoodsInput = {
   variantName: string;
   quantity?: number;
   imageUrl?: string | null;
+  isRandom?: boolean;
   status?: GoodsStatus;
 };
 

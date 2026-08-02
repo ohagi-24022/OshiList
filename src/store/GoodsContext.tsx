@@ -28,6 +28,7 @@ function normalizedGoodsInput(input: GoodsInput) {
     variantName: input.variantName.trim() || '通常版',
     quantity: Math.max(0, input.quantity ?? 1),
     imageUrl: input.imageUrl ?? null,
+    isRandom: input.isRandom ?? false,
     status: input.status ?? 'owned',
   };
 }
@@ -42,6 +43,7 @@ function mapGoods(row: Record<string, unknown>): Goods {
     variantName: String(row.variant_name),
     quantity: Number(row.quantity),
     imageUrl: (row.image_url as string | null) ?? null,
+    isRandom: Number(row.is_random ?? 0) === 1,
     status: String(row.status ?? 'owned') as GoodsStatus,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -59,6 +61,7 @@ async function migrate() {
       variant_name TEXT NOT NULL,
       quantity INTEGER NOT NULL DEFAULT 1,
       image_url TEXT,
+      is_random INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'owned',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -69,6 +72,11 @@ async function migrate() {
 
   try {
     await db.runAsync("ALTER TABLE goods ADD COLUMN series_name TEXT NOT NULL DEFAULT 'シリーズ未設定'");
+  } catch {
+    // Existing databases already have this column.
+  }
+  try {
+    await db.runAsync('ALTER TABLE goods ADD COLUMN is_random INTEGER NOT NULL DEFAULT 0');
   } catch {
     // Existing databases already have this column.
   }
@@ -101,6 +109,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
            AND series_name = ?
            AND character_name = ?
            AND variant_name = ?
+           AND is_random = ?
            AND status = ?
          ORDER BY id DESC
          LIMIT 1`,
@@ -108,6 +117,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.seriesName,
         normalized.characterName,
         normalized.variantName,
+        normalized.isRandom ? 1 : 0,
         normalized.status,
       );
 
@@ -130,8 +140,8 @@ export function GoodsProvider({ children }: PropsWithChildren) {
       }
 
       await db.runAsync(
-        `INSERT INTO goods (jan_code, box_name, series_name, character_name, variant_name, quantity, image_url, status, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO goods (jan_code, box_name, series_name, character_name, variant_name, quantity, image_url, is_random, status, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         normalized.janCode,
         normalized.boxName,
         normalized.seriesName,
@@ -139,6 +149,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.variantName,
         normalized.quantity,
         normalized.imageUrl,
+        normalized.isRandom ? 1 : 0,
         normalized.status,
       );
       await refresh();
@@ -173,6 +184,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
              variant_name = ?,
              quantity = ?,
              image_url = ?,
+             is_random = ?,
              status = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
@@ -183,6 +195,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.variantName,
         Math.max(0, input.quantity ?? 0),
         normalized.imageUrl,
+        normalized.isRandom ? 1 : 0,
         normalized.status,
         id,
       );

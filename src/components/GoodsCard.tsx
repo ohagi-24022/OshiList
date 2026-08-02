@@ -95,9 +95,17 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
           {item.variantName}
         </Text>
         <View style={styles.footer}>
-          <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
-            <View style={[styles.dot, { backgroundColor: characterColor ?? colors.secondary }]} />
-            <Text style={[styles.statusText, { color: colors.muted }]}>{statusLabels[item.status]}</Text>
+          <View style={styles.statusGroup}>
+            <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
+              <View style={[styles.dot, { backgroundColor: characterColor ?? colors.secondary }]} />
+              <Text style={[styles.statusText, { color: colors.muted }]}>{statusLabels[item.status]}</Text>
+            </View>
+            {item.isRandom ? (
+              <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
+                <Ionicons color={colors.primary} name="shuffle-outline" size={12} />
+                <Text style={[styles.statusText, { color: colors.muted }]}>ランダム</Text>
+              </View>
+            ) : null}
           </View>
           {isManage && onDecrease && onIncrease ? (
             <CounterButton quantity={item.quantity} onDecrease={onDecrease} onIncrease={onIncrease} />
@@ -159,6 +167,7 @@ const styles = StyleSheet.create({
   oshiText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   variant: { fontSize: 12, marginTop: 3 },
   footer: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  statusGroup: { alignItems: 'center', flexDirection: 'row', flexShrink: 1, flexWrap: 'wrap', gap: 6 },
   status: {
     alignItems: 'center',
     borderRadius: 999,

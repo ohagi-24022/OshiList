@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -26,6 +27,7 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
   const [characterName, setCharacterName] = useState(item.characterName);
   const [variantName, setVariantName] = useState(item.variantName);
   const [imageUrl, setImageUrl] = useState(item.imageUrl ?? '');
+  const [isRandom, setIsRandom] = useState(item.isRandom);
   const [quantity, setQuantity] = useState(String(item.quantity));
   const [status, setStatus] = useState<GoodsStatus>(item.status);
   const [saving, setSaving] = useState(false);
@@ -37,6 +39,7 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
     setCharacterName(item.characterName);
     setVariantName(item.variantName);
     setImageUrl(item.imageUrl ?? '');
+    setIsRandom(item.isRandom);
     setQuantity(String(item.quantity));
     setStatus(item.status);
   }, [item]);
@@ -55,6 +58,7 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
         variantName: variantName.trim() || '通常版',
         quantity: Math.max(0, Number(quantity) || 0),
         imageUrl: imageUrl.trim() || null,
+        isRandom,
         status,
       });
     } finally {
@@ -112,6 +116,19 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
 
       <Text style={[styles.label, { color: colors.muted }]}>画像</Text>
       <GoodsImageField value={imageUrl} onChange={setImageUrl} />
+
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: isRandom }}
+        onPress={() => setIsRandom((current) => !current)}
+        style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+      >
+        <Ionicons color={isRandom ? colors.primary : colors.muted} name={isRandom ? 'checkmark-circle' : 'ellipse-outline'} size={22} />
+        <View style={styles.checkTextBlock}>
+          <Text style={[styles.checkTitle, { color: colors.text }]}>ランダムグッズ</Text>
+          <Text style={[styles.checkHelp, { color: colors.muted }]}>交換可能グッズや収集率の対象にします。</Text>
+        </View>
+      </Pressable>
 
       <Text style={[styles.label, { color: colors.muted }]}>所持数</Text>
       <TextInput
@@ -179,6 +196,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusText: { fontSize: 13, fontWeight: '800' },
+  checkRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    minHeight: 58,
+    paddingHorizontal: 12,
+  },
+  checkTextBlock: { flex: 1 },
+  checkTitle: { fontSize: 14, fontWeight: '900' },
+  checkHelp: { fontSize: 11, fontWeight: '700', lineHeight: 16, marginTop: 2 },
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   secondaryButton: {
     alignItems: 'center',

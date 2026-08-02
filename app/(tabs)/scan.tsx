@@ -392,6 +392,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                           characterName: candidate.characterName,
                           variantName: candidate.variantName,
                           imageUrl: result.imageUrl,
+                          isRandom: true,
                         });
                         onClose();
                       }}

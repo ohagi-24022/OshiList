@@ -46,6 +46,7 @@ export function ManualGoodsForm({
   const [characterName, setCharacterName] = useState(initialCharacterName);
   const [variantName, setVariantName] = useState(initialVariantName);
   const [imageUrl, setImageUrl] = useState(initialImageUrl ?? '');
+  const [isRandom, setIsRandom] = useState(false);
   const [quantity, setQuantity] = useState('1');
   const [status, setStatus] = useState<GoodsStatus>('owned');
   const [saving, setSaving] = useState(false);
@@ -83,6 +84,7 @@ export function ManualGoodsForm({
         variantName: variantName.trim() || '通常版',
         quantity: Math.max(0, Number(quantity) || 0),
         imageUrl: imageUrl.trim() || null,
+        isRandom,
         status,
       });
       setBoxName('');
@@ -90,6 +92,7 @@ export function ManualGoodsForm({
       setCharacterName('');
       setVariantName('通常版');
       setImageUrl('');
+      setIsRandom(false);
       setQuantity('1');
       setStatus('owned');
     } finally {
@@ -187,6 +190,19 @@ export function ManualGoodsForm({
 
       <Text style={[styles.label, { color: colors.muted }]}>画像</Text>
       <GoodsImageField value={imageUrl} onChange={setImageUrl} />
+
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: isRandom }}
+        onPress={() => setIsRandom((current) => !current)}
+        style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+      >
+        <Ionicons color={isRandom ? colors.primary : colors.muted} name={isRandom ? 'checkmark-circle' : 'ellipse-outline'} size={22} />
+        <View style={styles.checkTextBlock}>
+          <Text style={[styles.checkTitle, { color: colors.text }]}>ランダムグッズ</Text>
+          <Text style={[styles.checkHelp, { color: colors.muted }]}>交換可能グッズや収集率の対象にします。</Text>
+        </View>
+      </Pressable>
 
       <Text style={[styles.label, { color: colors.muted }]}>所持数</Text>
       <TextInput
@@ -307,6 +323,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusText: { fontSize: 13, fontWeight: '800' },
+  checkRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    minHeight: 58,
+    paddingHorizontal: 12,
+  },
+  checkTextBlock: { flex: 1 },
+  checkTitle: { fontSize: 14, fontWeight: '900' },
+  checkHelp: { fontSize: 11, fontWeight: '700', lineHeight: 16, marginTop: 2 },
   saveButton: {
     alignItems: 'center',
     borderRadius: 8,

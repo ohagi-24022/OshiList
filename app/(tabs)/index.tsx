@@ -25,13 +25,13 @@ export default function HomeScreen() {
   const recentGoods = useMemo(() => [...goods].sort((a, b) => b.id - a.id).slice(0, 4), [goods]);
   const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
   const exchangeGoods = useMemo(
-    () => ownedGoods.filter((item) => item.quantity > 1).sort((a, b) => b.quantity - a.quantity).slice(0, 4),
+    () => ownedGoods.filter((item) => item.isRandom && item.quantity > 1).sort((a, b) => b.quantity - a.quantity).slice(0, 4),
     [ownedGoods],
   );
   const lineupProgress = useMemo(() => {
     const groups = new Map<string, { boxName: string; seriesName: string; owned: Set<string>; total: Set<string> }>();
     goods
-      .filter((item) => item.status !== 'unorganized')
+      .filter((item) => item.isRandom && item.status !== 'unorganized')
       .forEach((item) => {
         const key = `${item.seriesName}::${item.boxName}`;
         const group = groups.get(key) ?? {
@@ -172,11 +172,11 @@ export default function HomeScreen() {
             <View style={styles.tileGrid}>
               {exchangeGoods.map((item) => (
                 <View key={item.id} style={styles.tileItem}>
+                  <HomeGoodsTile item={item} />
                   <View style={[styles.exchangeBadge, { backgroundColor: colors.primary }]}>
                     <Ionicons color="#ffffff" name="swap-horizontal-outline" size={13} />
                     <Text style={styles.exchangeBadgeText}>交換可能 {item.quantity - 1}</Text>
                   </View>
-                  <HomeGoodsTile item={item} />
                 </View>
               ))}
             </View>
@@ -367,18 +367,16 @@ const styles = StyleSheet.create({
   sectionAction: { alignItems: 'center', flexDirection: 'row', gap: 2, minHeight: 36 },
   sectionActionText: { fontSize: 12, fontWeight: '900' },
   tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-  tileItem: { position: 'relative', width: '48.5%' },
+  tileItem: { width: '48.5%' },
   exchangeBadge: {
     alignItems: 'center',
     borderRadius: 999,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     gap: 4,
-    left: 7,
+    marginTop: 6,
     minHeight: 26,
     paddingHorizontal: 8,
-    position: 'absolute',
-    top: 7,
-    zIndex: 2,
   },
   exchangeBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   emptyPanel: {
