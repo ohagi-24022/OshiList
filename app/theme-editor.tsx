@@ -1,7 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  GestureResponderEvent,
+  LayoutChangeEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { hexToHsl, hslToHex, HslColor, normalizeHex } from '../src/lib/color';
@@ -22,9 +32,8 @@ const colorRoles: Array<[ColorRole, string, string]> = [
   ['danger', '警告', '削除やエラー'],
 ];
 
-const hueStops = [0, 30, 60, 120, 200, 270, 320];
-const percentStops = [0, 25, 50, 75, 100];
 const accentColorOptions = ['#e94f7d', '#f5a400', '#7b61ff', '#00a7b5', '#31c759', '#111111'];
+const sliderSteps = Array.from({ length: 24 }, (_, index) => index / 23);
 
 export default function ThemeEditorScreen() {
   const { colors, setCustomColor, saveCurrentAsPreset, upsertCharacterAccent, removeCharacterAccent } = useAppTheme();
@@ -181,27 +190,12 @@ export default function ThemeEditorScreen() {
             style={[styles.hexInput, { backgroundColor: colors.input, color: colors.text }]}
           />
 
-          <HuePicker
-            value={selectedHsl.h}
+          <ColorPicker
             colors={colors}
-            onSelect={(next) => updateHsl({ h: next })}
-            onNudge={(amount) => nudge('h', amount)}
-          />
-          <PercentPicker
-            label="彩度"
-            value={selectedHsl.s}
-            colors={colors}
-            getColor={(next) => hslToHex({ ...selectedHsl, s: next })}
-            onSelect={(next) => updateHsl({ s: next })}
-            onNudge={(amount) => nudge('s', amount)}
-          />
-          <PercentPicker
-            label="明度"
-            value={selectedHsl.l}
-            colors={colors}
-            getColor={(next) => hslToHex({ ...selectedHsl, l: next })}
-            onSelect={(next) => updateHsl({ l: next })}
-            onNudge={(amount) => nudge('l', amount)}
+            hex={selectedHex}
+            hsl={selectedHsl}
+            onHslChange={updateHsl}
+            onNudge={nudge}
           />
         </View>
 
@@ -277,6 +271,19 @@ export default function ThemeEditorScreen() {
               />
             ))}
           </View>
+          <ColorPicker
+            compact
+            colors={colors}
+            hex={accentColor}
+            hsl={hexToHsl(accentColor)}
+            onHslChange={(patch) => setAccentColor(hslToHex({ ...hexToHsl(accentColor), ...patch }))}
+            onNudge={(key, amount) => {
+              const current = hexToHsl(accentColor);
+              const max = key === 'h' ? 360 : 100;
+              const next = Math.max(0, Math.min(max, current[key] + amount));
+              setAccentColor(hslToHex({ ...current, [key]: next }));
+            }}
+          />
           <Pressable
             disabled={!canUseCharacterAccents}
             onPress={saveCharacterAccent}
@@ -327,75 +334,113 @@ export default function ThemeEditorScreen() {
   );
 }
 
-function HuePicker({
-  value,
+function ColorPicker({
+  compact = false,
   colors,
-  onSelect,
+  hex,
+  hsl,
+  onHslChange,
   onNudge,
 }: {
-  value: number;
+  compact?: boolean;
   colors: ReturnType<typeof useAppTheme>['colors'];
-  onSelect: (value: number) => void;
-  onNudge: (amount: number) => void;
+  hex: string;
+  hsl: HslColor;
+  onHslChange: (patch: Partial<HslColor>) => void;
+  onNudge: (key: keyof HslColor, amount: number) => void;
 }) {
   return (
-    <View style={styles.pickerBlock}>
-      <PickerHeader label="色相" value={`${value}`} colors={colors} onMinus={() => onNudge(-10)} onPlus={() => onNudge(10)} />
-      <View style={styles.largeGrid}>
-        {hueStops.map((hue) => (
-          <Pressable
-            key={hue}
-            onPress={() => onSelect(hue)}
-            style={[
-              styles.hueButton,
-              {
-                backgroundColor: hslToHex({ h: hue, s: 82, l: 54 }),
-                borderColor: Math.abs(hue - value) <= 12 ? colors.text : colors.border,
-              },
-            ]}
-          />
-        ))}
-      </View>
+    <View style={[styles.colorPicker, compact && styles.compactColorPicker]}>
+      {!compact ? (
+        <View style={[styles.colorPreviewLarge, { backgroundColor: hex, borderColor: colors.border }]}>
+          <Text style={[styles.colorPreviewText, { color: hsl.l > 55 ? '#111111' : '#ffffff' }]}>{hex.toUpperCase()}</Text>
+        </View>
+      ) : null}
+      <ColorSlider
+        label="色相"
+        value={hsl.h}
+        max={360}
+        colors={colors}
+        valueText={`${hsl.h}`}
+        getColor={(ratio) => hslToHex({ h: Math.round(ratio * 360), s: 86, l: 54 })}
+        onChange={(next) => onHslChange({ h: next })}
+        onNudge={(amount) => onNudge('h', amount)}
+      />
+      <ColorSlider
+        label="彩度"
+        value={hsl.s}
+        max={100}
+        colors={colors}
+        valueText={`${hsl.s}%`}
+        getColor={(ratio) => hslToHex({ ...hsl, s: Math.round(ratio * 100) })}
+        onChange={(next) => onHslChange({ s: next })}
+        onNudge={(amount) => onNudge('s', amount)}
+      />
+      <ColorSlider
+        label="明度"
+        value={hsl.l}
+        max={100}
+        colors={colors}
+        valueText={`${hsl.l}%`}
+        getColor={(ratio) => hslToHex({ ...hsl, l: Math.round(ratio * 100) })}
+        onChange={(next) => onHslChange({ l: next })}
+        onNudge={(amount) => onNudge('l', amount)}
+      />
     </View>
   );
 }
 
-function PercentPicker({
+function ColorSlider({
   label,
   value,
+  max,
   colors,
+  valueText,
   getColor,
-  onSelect,
+  onChange,
   onNudge,
 }: {
   label: string;
   value: number;
+  max: number;
   colors: ReturnType<typeof useAppTheme>['colors'];
-  getColor: (value: number) => string;
-  onSelect: (value: number) => void;
+  valueText: string;
+  getColor: (ratio: number) => string;
+  onChange: (value: number) => void;
   onNudge: (amount: number) => void;
 }) {
-  const closest = percentStops.reduce((best, next) => (Math.abs(next - value) < Math.abs(best - value) ? next : best), 0);
+  const [width, setWidth] = useState(1);
+  const ratio = Math.max(0, Math.min(1, value / max));
+  const updateFromEvent = (event: GestureResponderEvent) => {
+    const nextRatio = Math.max(0, Math.min(1, event.nativeEvent.locationX / width));
+    onChange(Math.round(nextRatio * max));
+  };
 
   return (
-    <View style={styles.pickerBlock}>
-      <PickerHeader label={label} value={`${value}%`} colors={colors} onMinus={() => onNudge(-5)} onPlus={() => onNudge(5)} />
-      <View style={styles.percentRow}>
-        {percentStops.map((stop) => (
-          <Pressable
-            key={`${label}-${stop}`}
-            onPress={() => onSelect(stop)}
-            style={[
-              styles.percentButton,
-              {
-                backgroundColor: getColor(stop),
-                borderColor: stop === closest ? colors.text : colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.percentText, { color: stop >= 50 ? '#ffffff' : '#111111' }]}>{stop}</Text>
-          </Pressable>
+    <View style={styles.sliderBlock}>
+      <PickerHeader label={label} value={valueText} colors={colors} onMinus={() => onNudge(max === 360 ? -5 : -2)} onPlus={() => onNudge(max === 360 ? 5 : 2)} />
+      <View
+        onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={updateFromEvent}
+        onResponderMove={updateFromEvent}
+        style={[styles.sliderTrack, { borderColor: colors.border }]}
+      >
+        {sliderSteps.map((step) => (
+          <View key={`${label}-${step}`} style={[styles.sliderSegment, { backgroundColor: getColor(step) }]} />
         ))}
+        <View
+          pointerEvents="none"
+          style={[
+            styles.sliderThumb,
+            {
+              backgroundColor: getColor(ratio),
+              borderColor: colors.text,
+              left: `${ratio * 100}%`,
+            },
+          ]}
+        />
       </View>
     </View>
   );
@@ -481,7 +526,35 @@ const styles = StyleSheet.create({
   selectedChip: { borderRadius: 8, borderWidth: 1, height: 52, width: 52 },
   selectedTextBlock: { flex: 1 },
   hexInput: { borderRadius: 8, fontSize: 16, height: 46, marginTop: 14, paddingHorizontal: 12 },
-  pickerBlock: { marginTop: 18 },
+  colorPicker: { gap: 14, marginTop: 14 },
+  compactColorPicker: { gap: 12, marginTop: 12 },
+  colorPreviewLarge: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 78,
+    justifyContent: 'center',
+  },
+  colorPreviewText: { fontSize: 18, fontWeight: '900' },
+  sliderBlock: { gap: 8 },
+  sliderTrack: {
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    height: 34,
+    overflow: 'visible',
+    position: 'relative',
+  },
+  sliderSegment: { flex: 1 },
+  sliderThumb: {
+    borderRadius: 999,
+    borderWidth: 3,
+    height: 42,
+    marginLeft: -21,
+    position: 'absolute',
+    top: -5,
+    width: 42,
+  },
   pickerHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   pickerLabel: { fontSize: 14, fontWeight: '900' },
   pickerValue: { fontSize: 12, fontWeight: '800', marginTop: 2 },
@@ -494,18 +567,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 52,
   },
-  largeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  hueButton: { borderRadius: 8, borderWidth: 3, height: 50, width: 50 },
-  percentRow: { flexDirection: 'row', gap: 8 },
-  percentButton: {
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 3,
-    flex: 1,
-    height: 50,
-    justifyContent: 'center',
-  },
-  percentText: { fontSize: 13, fontWeight: '900' },
   notice: {
     alignItems: 'center',
     borderRadius: 8,
