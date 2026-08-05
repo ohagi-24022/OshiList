@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -40,11 +41,13 @@ const colorAreaRows = Array.from({ length: 8 }, (_, index) => index / 7);
 export default function ThemeEditorScreen() {
   const { colors, setCustomColor, saveCurrentAsPreset, upsertCharacterAccent, removeCharacterAccent } = useAppTheme();
   const { goods } = useGoods();
+  const navigation = useNavigation();
   const [selectedRole, setSelectedRole] = useState<ColorRole>('primary');
   const [presetName, setPresetName] = useState('');
   const [accentSeries, setAccentSeries] = useState('');
   const [accentCharacter, setAccentCharacter] = useState('');
   const [accentColor, setAccentColor] = useState(colors.primary);
+  const [colorPickerDragging, setColorPickerDragging] = useState(false);
 
   const selectedHex = colors[selectedRole];
   const characterAccents = colors.custom ? colors.characterAccents ?? [] : [];
@@ -53,6 +56,10 @@ export default function ThemeEditorScreen() {
   useEffect(() => {
     setAccentColor(colors.primary);
   }, [colors.primary]);
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !colorPickerDragging });
+  }, [colorPickerDragging, navigation]);
 
   const characterSuggestions = useMemo(() => {
     const pairs = new Map<string, { seriesName: string; characterName: string }>();
@@ -110,7 +117,7 @@ export default function ThemeEditorScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={!colorPickerDragging}>
         <View style={[styles.previewPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.previewHeader, { backgroundColor: colors.elevated }]}>
             <View>
@@ -184,6 +191,8 @@ export default function ThemeEditorScreen() {
             colors={colors}
             hex={selectedHex}
             onColorChange={(nextHex) => setCustomColor(selectedRole, nextHex)}
+            onDragEnd={() => setColorPickerDragging(false)}
+            onDragStart={() => setColorPickerDragging(true)}
           />
         </View>
 
@@ -264,6 +273,8 @@ export default function ThemeEditorScreen() {
             colors={colors}
             hex={accentColor}
             onColorChange={setAccentColor}
+            onDragEnd={() => setColorPickerDragging(false)}
+            onDragStart={() => setColorPickerDragging(true)}
           />
           <Pressable
             disabled={!canUseCharacterAccents}
@@ -319,11 +330,15 @@ function ColorPicker({
   compact = false,
   colors,
   hex,
+  onDragEnd,
+  onDragStart,
   onColorChange,
 }: {
   compact?: boolean;
   colors: ReturnType<typeof useAppTheme>['colors'];
   hex: string;
+  onDragEnd?: () => void;
+  onDragStart?: () => void;
   onColorChange: (hex: string) => void;
 }) {
   const hsv = useMemo(() => hexToHsv(hex), [hex]);
@@ -338,7 +353,7 @@ function ColorPicker({
           <Text style={[styles.colorPreviewText, { color: previewTextColor }]}>{hex.toUpperCase()}</Text>
         </View>
       ) : null}
-      <ColorArea hsv={hsv} colors={colors} onChange={(s, v) => updateHsv({ s, v })} />
+      <ColorArea hsv={hsv} colors={colors} onChange={(s, v) => updateHsv({ s, v })} onDragEnd={onDragEnd} onDragStart={onDragStart} />
       <ColorSlider
         label="色相"
         value={hsv.h}
@@ -347,6 +362,8 @@ function ColorPicker({
         valueText={`${hsv.h}`}
         getColor={(ratio) => hslToHex({ h: Math.round(ratio * 360), s: 86, l: 54 })}
         onChange={(next) => updateHsv({ h: next })}
+        onDragEnd={onDragEnd}
+        onDragStart={onDragStart}
         onNudge={(amount) => updateHsv({ h: Math.max(0, Math.min(360, hsv.h + amount)) })}
       />
     </View>
@@ -357,10 +374,14 @@ function ColorArea({
   hsv,
   colors,
   onChange,
+  onDragEnd,
+  onDragStart,
 }: {
   hsv: HsvColor;
   colors: ReturnType<typeof useAppTheme>['colors'];
   onChange: (saturation: number, value: number) => void;
+  onDragEnd?: () => void;
+  onDragStart?: () => void;
 }) {
   const areaRef = useRef<View>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
@@ -382,8 +403,13 @@ function ColorArea({
       onLayout={(event: LayoutChangeEvent) => setSize(event.nativeEvent.layout)}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
-      onResponderGrant={updateFromEvent}
+      onResponderGrant={(event) => {
+        onDragStart?.();
+        updateFromEvent(event);
+      }}
       onResponderMove={updateFromEvent}
+      onResponderRelease={onDragEnd}
+      onResponderTerminate={onDragEnd}
       style={[styles.colorArea, { borderColor: colors.border }]}
     >
       {colorAreaRows.map((row) => (
@@ -422,6 +448,8 @@ function ColorSlider({
   valueText,
   getColor,
   onChange,
+  onDragEnd,
+  onDragStart,
   onNudge,
 }: {
   label: string;
@@ -431,6 +459,8 @@ function ColorSlider({
   valueText: string;
   getColor: (ratio: number) => string;
   onChange: (value: number) => void;
+  onDragEnd?: () => void;
+  onDragStart?: () => void;
   onNudge: (amount: number) => void;
 }) {
   const sliderRef = useRef<View>(null);
@@ -451,8 +481,13 @@ function ColorSlider({
         onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
-        onResponderGrant={updateFromEvent}
+        onResponderGrant={(event) => {
+          onDragStart?.();
+          updateFromEvent(event);
+        }}
         onResponderMove={updateFromEvent}
+        onResponderRelease={onDragEnd}
+        onResponderTerminate={onDragEnd}
         style={[styles.sliderTrack, { borderColor: colors.border }]}
       >
         {sliderSteps.map((step) => (

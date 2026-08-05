@@ -10,11 +10,13 @@ const colorAreaRows = Array.from({ length: 8 }, (_, index) => index / 7);
 
 type Props = {
   compact?: boolean;
+  onDragEnd?: () => void;
+  onDragStart?: () => void;
   value: string;
   onChange: (hex: string) => void;
 };
 
-export function ColorPicker({ compact = false, value, onChange }: Props) {
+export function ColorPicker({ compact = false, onDragEnd, onDragStart, value, onChange }: Props) {
   const { colors } = useAppTheme();
   const hsv = useMemo(() => hexToHsv(value), [value]);
   const previewTextColor = hsv.v > 62 && hsv.s < 75 ? '#111111' : '#ffffff';
@@ -29,7 +31,7 @@ export function ColorPicker({ compact = false, value, onChange }: Props) {
           <Text style={[styles.colorPreviewText, { color: previewTextColor }]}>{value.toUpperCase()}</Text>
         </View>
       ) : null}
-      <ColorArea hsv={hsv} onChange={(s, v) => updateHsv({ s, v })} />
+      <ColorArea hsv={hsv} onChange={(s, v) => updateHsv({ s, v })} onDragEnd={onDragEnd} onDragStart={onDragStart} />
       <ColorSlider
         label="色相"
         value={hsv.h}
@@ -37,13 +39,25 @@ export function ColorPicker({ compact = false, value, onChange }: Props) {
         valueText={`${hsv.h}`}
         getColor={(ratio) => hslToHex({ h: Math.round(ratio * 360), s: 86, l: 54 })}
         onChange={(next) => updateHsv({ h: next })}
+        onDragEnd={onDragEnd}
+        onDragStart={onDragStart}
         onNudge={(amount) => updateHsv({ h: Math.max(0, Math.min(360, hsv.h + amount)) })}
       />
     </View>
   );
 }
 
-function ColorArea({ hsv, onChange }: { hsv: HsvColor; onChange: (saturation: number, value: number) => void }) {
+function ColorArea({
+  hsv,
+  onChange,
+  onDragEnd,
+  onDragStart,
+}: {
+  hsv: HsvColor;
+  onChange: (saturation: number, value: number) => void;
+  onDragEnd?: () => void;
+  onDragStart?: () => void;
+}) {
   const { colors } = useAppTheme();
   const areaRef = useRef<View>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
@@ -65,8 +79,13 @@ function ColorArea({ hsv, onChange }: { hsv: HsvColor; onChange: (saturation: nu
       onLayout={(event: LayoutChangeEvent) => setSize(event.nativeEvent.layout)}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
-      onResponderGrant={updateFromEvent}
+      onResponderGrant={(event) => {
+        onDragStart?.();
+        updateFromEvent(event);
+      }}
       onResponderMove={updateFromEvent}
+      onResponderRelease={onDragEnd}
+      onResponderTerminate={onDragEnd}
       style={[styles.colorArea, { borderColor: colors.border }]}
     >
       {colorAreaRows.map((row) => (
@@ -104,6 +123,8 @@ function ColorSlider({
   valueText,
   getColor,
   onChange,
+  onDragEnd,
+  onDragStart,
   onNudge,
 }: {
   label: string;
@@ -112,6 +133,8 @@ function ColorSlider({
   valueText: string;
   getColor: (ratio: number) => string;
   onChange: (value: number) => void;
+  onDragEnd?: () => void;
+  onDragStart?: () => void;
   onNudge: (amount: number) => void;
 }) {
   const { colors } = useAppTheme();
@@ -146,8 +169,13 @@ function ColorSlider({
         onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
-        onResponderGrant={updateFromEvent}
+        onResponderGrant={(event) => {
+          onDragStart?.();
+          updateFromEvent(event);
+        }}
         onResponderMove={updateFromEvent}
+        onResponderRelease={onDragEnd}
+        onResponderTerminate={onDragEnd}
         style={[styles.sliderTrack, { borderColor: colors.border }]}
       >
         {sliderSteps.map((step) => (
