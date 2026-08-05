@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   GestureResponderEvent,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { hexToHsl, hslToHex, HslColor, normalizeHex } from '../src/lib/color';
+import { hexToHsv, hslToHex, hsvToHex, HsvColor, normalizeHex } from '../src/lib/color';
 import { useGoods } from '../src/store/GoodsContext';
 import { CharacterAccent, ColorRole, useAppTheme } from '../src/store/ThemeContext';
 
@@ -34,6 +34,8 @@ const colorRoles: Array<[ColorRole, string, string]> = [
 
 const accentColorOptions = ['#e94f7d', '#f5a400', '#7b61ff', '#00a7b5', '#31c759', '#111111'];
 const sliderSteps = Array.from({ length: 24 }, (_, index) => index / 23);
+const colorAreaColumns = Array.from({ length: 12 }, (_, index) => index / 11);
+const colorAreaRows = Array.from({ length: 8 }, (_, index) => index / 7);
 
 export default function ThemeEditorScreen() {
   const { colors, setCustomColor, saveCurrentAsPreset, upsertCharacterAccent, removeCharacterAccent } = useAppTheme();
@@ -45,7 +47,6 @@ export default function ThemeEditorScreen() {
   const [accentColor, setAccentColor] = useState(colors.primary);
 
   const selectedHex = colors[selectedRole];
-  const selectedHsl = useMemo(() => hexToHsl(selectedHex), [selectedHex]);
   const characterAccents = colors.custom ? colors.characterAccents ?? [] : [];
   const canUseCharacterAccents = !!colors.custom;
 
@@ -65,17 +66,6 @@ export default function ThemeEditorScreen() {
       `${a.seriesName}${a.characterName}`.localeCompare(`${b.seriesName}${b.characterName}`, 'ja'),
     );
   }, [goods]);
-
-  const updateHsl = (patch: Partial<HslColor>) => {
-    setCustomColor(selectedRole, hslToHex({ ...selectedHsl, ...patch }));
-  };
-
-  const nudge = (key: keyof HslColor, amount: number) => {
-    const max = key === 'h' ? 360 : 100;
-    const min = 0;
-    const next = Math.max(min, Math.min(max, selectedHsl[key] + amount));
-    updateHsl({ [key]: next } as Partial<HslColor>);
-  };
 
   const savePreset = async () => {
     await saveCurrentAsPreset(presetName);
@@ -193,9 +183,7 @@ export default function ThemeEditorScreen() {
           <ColorPicker
             colors={colors}
             hex={selectedHex}
-            hsl={selectedHsl}
-            onHslChange={updateHsl}
-            onNudge={nudge}
+            onColorChange={(nextHex) => setCustomColor(selectedRole, nextHex)}
           />
         </View>
 
@@ -275,14 +263,7 @@ export default function ThemeEditorScreen() {
             compact
             colors={colors}
             hex={accentColor}
-            hsl={hexToHsl(accentColor)}
-            onHslChange={(patch) => setAccentColor(hslToHex({ ...hexToHsl(accentColor), ...patch }))}
-            onNudge={(key, amount) => {
-              const current = hexToHsl(accentColor);
-              const max = key === 'h' ? 360 : 100;
-              const next = Math.max(0, Math.min(max, current[key] + amount));
-              setAccentColor(hslToHex({ ...current, [key]: next }));
-            }}
+            onColorChange={setAccentColor}
           />
           <Pressable
             disabled={!canUseCharacterAccents}
@@ -338,53 +319,96 @@ function ColorPicker({
   compact = false,
   colors,
   hex,
-  hsl,
-  onHslChange,
-  onNudge,
+  onColorChange,
 }: {
   compact?: boolean;
   colors: ReturnType<typeof useAppTheme>['colors'];
   hex: string;
-  hsl: HslColor;
-  onHslChange: (patch: Partial<HslColor>) => void;
-  onNudge: (key: keyof HslColor, amount: number) => void;
+  onColorChange: (hex: string) => void;
 }) {
+  const hsv = useMemo(() => hexToHsv(hex), [hex]);
+  const previewTextColor = hsv.v > 62 && hsv.s < 75 ? '#111111' : '#ffffff';
+  const updateHsv = (patch: Partial<HsvColor>) => {
+    onColorChange(hsvToHex({ ...hsv, ...patch }));
+  };
   return (
     <View style={[styles.colorPicker, compact && styles.compactColorPicker]}>
       {!compact ? (
         <View style={[styles.colorPreviewLarge, { backgroundColor: hex, borderColor: colors.border }]}>
-          <Text style={[styles.colorPreviewText, { color: hsl.l > 55 ? '#111111' : '#ffffff' }]}>{hex.toUpperCase()}</Text>
+          <Text style={[styles.colorPreviewText, { color: previewTextColor }]}>{hex.toUpperCase()}</Text>
         </View>
       ) : null}
+      <ColorArea hsv={hsv} colors={colors} onChange={(s, v) => updateHsv({ s, v })} />
       <ColorSlider
         label="色相"
-        value={hsl.h}
+        value={hsv.h}
         max={360}
         colors={colors}
-        valueText={`${hsl.h}`}
+        valueText={`${hsv.h}`}
         getColor={(ratio) => hslToHex({ h: Math.round(ratio * 360), s: 86, l: 54 })}
-        onChange={(next) => onHslChange({ h: next })}
-        onNudge={(amount) => onNudge('h', amount)}
+        onChange={(next) => updateHsv({ h: next })}
+        onNudge={(amount) => updateHsv({ h: Math.max(0, Math.min(360, hsv.h + amount)) })}
       />
-      <ColorSlider
-        label="彩度"
-        value={hsl.s}
-        max={100}
-        colors={colors}
-        valueText={`${hsl.s}%`}
-        getColor={(ratio) => hslToHex({ ...hsl, s: Math.round(ratio * 100) })}
-        onChange={(next) => onHslChange({ s: next })}
-        onNudge={(amount) => onNudge('s', amount)}
-      />
-      <ColorSlider
-        label="明度"
-        value={hsl.l}
-        max={100}
-        colors={colors}
-        valueText={`${hsl.l}%`}
-        getColor={(ratio) => hslToHex({ ...hsl, l: Math.round(ratio * 100) })}
-        onChange={(next) => onHslChange({ l: next })}
-        onNudge={(amount) => onNudge('l', amount)}
+    </View>
+  );
+}
+
+function ColorArea({
+  hsv,
+  colors,
+  onChange,
+}: {
+  hsv: HsvColor;
+  colors: ReturnType<typeof useAppTheme>['colors'];
+  onChange: (saturation: number, value: number) => void;
+}) {
+  const areaRef = useRef<View>(null);
+  const [size, setSize] = useState({ width: 1, height: 1 });
+  const saturationRatio = Math.max(0, Math.min(1, hsv.s / 100));
+  const valueRatio = Math.max(0, Math.min(1, hsv.v / 100));
+
+  const updateFromEvent = (event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+    areaRef.current?.measureInWindow((x, y, width, height) => {
+      const nextSaturation = Math.max(0, Math.min(1, (pageX - x) / Math.max(1, width)));
+      const nextValue = Math.max(0, Math.min(1, 1 - (pageY - y) / Math.max(1, height)));
+      onChange(Math.round(nextSaturation * 100), Math.round(nextValue * 100));
+    });
+  };
+
+  return (
+    <View
+      ref={areaRef}
+      onLayout={(event: LayoutChangeEvent) => setSize(event.nativeEvent.layout)}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={updateFromEvent}
+      onResponderMove={updateFromEvent}
+      style={[styles.colorArea, { borderColor: colors.border }]}
+    >
+      {colorAreaRows.map((row) => (
+        <View key={`row-${row}`} style={styles.colorAreaRow}>
+          {colorAreaColumns.map((column) => (
+            <View
+              key={`cell-${row}-${column}`}
+              style={[
+                styles.colorAreaCell,
+                { backgroundColor: hsvToHex({ h: hsv.h, s: Math.round(column * 100), v: Math.round((1 - row) * 100) }) },
+              ]}
+            />
+          ))}
+        </View>
+      ))}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.colorAreaThumb,
+          {
+            borderColor: colors.text,
+            left: saturationRatio * size.width,
+            top: (1 - valueRatio) * size.height,
+          },
+        ]}
       />
     </View>
   );
@@ -409,17 +433,21 @@ function ColorSlider({
   onChange: (value: number) => void;
   onNudge: (amount: number) => void;
 }) {
+  const sliderRef = useRef<View>(null);
   const [width, setWidth] = useState(1);
   const ratio = Math.max(0, Math.min(1, value / max));
   const updateFromEvent = (event: GestureResponderEvent) => {
-    const nextRatio = Math.max(0, Math.min(1, event.nativeEvent.locationX / width));
-    onChange(Math.round(nextRatio * max));
+    sliderRef.current?.measureInWindow((x, _y, measuredWidth) => {
+      const nextRatio = Math.max(0, Math.min(1, (event.nativeEvent.pageX - x) / Math.max(1, measuredWidth || width)));
+      onChange(Math.round(nextRatio * max));
+    });
   };
 
   return (
     <View style={styles.sliderBlock}>
       <PickerHeader label={label} value={valueText} colors={colors} onMinus={() => onNudge(max === 360 ? -5 : -2)} onPlus={() => onNudge(max === 360 ? 5 : 2)} />
       <View
+        ref={sliderRef}
         onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
@@ -536,6 +564,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   colorPreviewText: { fontSize: 18, fontWeight: '900' },
+  colorArea: {
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 188,
+    overflow: 'visible',
+    position: 'relative',
+  },
+  colorAreaRow: { flex: 1, flexDirection: 'row' },
+  colorAreaCell: { flex: 1 },
+  colorAreaThumb: {
+    backgroundColor: 'transparent',
+    borderRadius: 999,
+    borderWidth: 3,
+    height: 28,
+    marginLeft: -14,
+    marginTop: -14,
+    position: 'absolute',
+    width: 28,
+  },
   sliderBlock: { gap: 8 },
   sliderTrack: {
     borderRadius: 999,
