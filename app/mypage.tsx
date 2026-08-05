@@ -37,6 +37,7 @@ export default function MyPageScreen() {
     (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap,
   );
   const [markColor, setMarkColor] = useState(profile.markColor ?? colors.primary);
+  const [markColorPickerOpen, setMarkColorPickerOpen] = useState(false);
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageCandidates, setImageCandidates] = useState<ProductSearchCandidate[]>([]);
 
@@ -47,6 +48,7 @@ export default function MyPageScreen() {
     setNote(profile.note);
     setMarkIcon((profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap);
     setMarkColor(profile.markColor ?? colors.primary);
+    setMarkColorPickerOpen(false);
   }, [colors.primary, profile]);
 
   const ownedForOshi = useMemo(() => {
@@ -297,7 +299,19 @@ export default function MyPageScreen() {
             ))}
           </View>
 
-          <ColorPicker compact value={markColor} onChange={setMarkColor} />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setMarkColorPickerOpen((current) => !current)}
+            style={[styles.markColorToggle, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+          >
+            <Ionicons color={colors.primary} name="color-palette-outline" size={18} />
+            <Text style={[styles.markColorToggleText, { color: colors.text }]}>
+              {markColorPickerOpen ? '色の調整を閉じる' : '色を変更'}
+            </Text>
+            <Ionicons color={colors.muted} name={markColorPickerOpen ? 'chevron-up' : 'chevron-down'} size={18} />
+          </Pressable>
+
+          {markColorPickerOpen ? <ColorPicker compact value={markColor} onChange={setMarkColor} /> : null}
 
           <Text style={[styles.label, { color: colors.muted }]}>メモ</Text>
           <TextInput
@@ -439,6 +453,18 @@ const styles = StyleSheet.create({
     height: 34,
     width: 34,
   },
+  markColorToggle: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 46,
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingHorizontal: 14,
+  },
+  markColorToggleText: { flex: 1, fontSize: 14, fontWeight: '900', textAlign: 'center' },
   noteInput: {
     borderRadius: 8,
     fontSize: 15,
