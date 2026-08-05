@@ -1,10 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  GestureResponderEvent,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -41,13 +39,11 @@ const colorAreaRows = Array.from({ length: 8 }, (_, index) => index / 7);
 export default function ThemeEditorScreen() {
   const { colors, setCustomColor, saveCurrentAsPreset, upsertCharacterAccent, removeCharacterAccent } = useAppTheme();
   const { goods } = useGoods();
-  const navigation = useNavigation();
   const [selectedRole, setSelectedRole] = useState<ColorRole>('primary');
   const [presetName, setPresetName] = useState('');
   const [accentSeries, setAccentSeries] = useState('');
   const [accentCharacter, setAccentCharacter] = useState('');
   const [accentColor, setAccentColor] = useState(colors.primary);
-  const [colorPickerDragging, setColorPickerDragging] = useState(false);
 
   const selectedHex = colors[selectedRole];
   const characterAccents = colors.custom ? colors.characterAccents ?? [] : [];
@@ -56,13 +52,6 @@ export default function ThemeEditorScreen() {
   useEffect(() => {
     setAccentColor(colors.primary);
   }, [colors.primary]);
-
-  useEffect(() => {
-    navigation.setOptions({
-      fullScreenGestureEnabled: !colorPickerDragging,
-      gestureEnabled: !colorPickerDragging,
-    });
-  }, [colorPickerDragging, navigation]);
 
   const characterSuggestions = useMemo(() => {
     const pairs = new Map<string, { seriesName: string; characterName: string }>();
@@ -120,7 +109,7 @@ export default function ThemeEditorScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={!colorPickerDragging}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={[styles.previewPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.previewHeader, { backgroundColor: colors.elevated }]}>
             <View>
@@ -194,8 +183,6 @@ export default function ThemeEditorScreen() {
             colors={colors}
             hex={selectedHex}
             onColorChange={(nextHex) => setCustomColor(selectedRole, nextHex)}
-            onDragEnd={() => setColorPickerDragging(false)}
-            onDragStart={() => setColorPickerDragging(true)}
           />
         </View>
 
@@ -276,8 +263,6 @@ export default function ThemeEditorScreen() {
             colors={colors}
             hex={accentColor}
             onColorChange={setAccentColor}
-            onDragEnd={() => setColorPickerDragging(false)}
-            onDragStart={() => setColorPickerDragging(true)}
           />
           <Pressable
             disabled={!canUseCharacterAccents}
@@ -333,15 +318,11 @@ function ColorPicker({
   compact = false,
   colors,
   hex,
-  onDragEnd,
-  onDragStart,
   onColorChange,
 }: {
   compact?: boolean;
   colors: ReturnType<typeof useAppTheme>['colors'];
   hex: string;
-  onDragEnd?: () => void;
-  onDragStart?: () => void;
   onColorChange: (hex: string) => void;
 }) {
   const hsv = useMemo(() => hexToHsv(hex), [hex]);
@@ -350,18 +331,13 @@ function ColorPicker({
     onColorChange(hsvToHex({ ...hsv, ...patch }));
   };
   return (
-    <View
-      onTouchCancel={onDragEnd}
-      onTouchEnd={onDragEnd}
-      onTouchStart={onDragStart}
-      style={[styles.colorPicker, compact && styles.compactColorPicker]}
-    >
+    <View style={[styles.colorPicker, compact && styles.compactColorPicker]}>
       {!compact ? (
         <View style={[styles.colorPreviewLarge, { backgroundColor: hex, borderColor: colors.border }]}>
           <Text style={[styles.colorPreviewText, { color: previewTextColor }]}>{hex.toUpperCase()}</Text>
         </View>
       ) : null}
-      <ColorArea hsv={hsv} colors={colors} onChange={(s, v) => updateHsv({ s, v })} onDragEnd={onDragEnd} onDragStart={onDragStart} />
+      <ColorArea hsv={hsv} colors={colors} onChange={(s, v) => updateHsv({ s, v })} />
       <ColorSlider
         label="色相"
         value={hsv.h}
@@ -370,8 +346,6 @@ function ColorPicker({
         valueText={`${hsv.h}`}
         getColor={(ratio) => hslToHex({ h: Math.round(ratio * 360), s: 86, l: 54 })}
         onChange={(next) => updateHsv({ h: next })}
-        onDragEnd={onDragEnd}
-        onDragStart={onDragStart}
         onNudge={(amount) => updateHsv({ h: Math.max(0, Math.min(360, hsv.h + amount)) })}
       />
     </View>
@@ -382,52 +356,26 @@ function ColorArea({
   hsv,
   colors,
   onChange,
-  onDragEnd,
-  onDragStart,
 }: {
   hsv: HsvColor;
   colors: ReturnType<typeof useAppTheme>['colors'];
   onChange: (saturation: number, value: number) => void;
-  onDragEnd?: () => void;
-  onDragStart?: () => void;
 }) {
-  const areaRef = useRef<View>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const saturationRatio = Math.max(0, Math.min(1, hsv.s / 100));
   const valueRatio = Math.max(0, Math.min(1, hsv.v / 100));
 
-  const updateFromEvent = (event: GestureResponderEvent) => {
-    const { pageX, pageY } = event.nativeEvent;
-    areaRef.current?.measureInWindow((x, y, width, height) => {
-      const nextSaturation = Math.max(0, Math.min(1, (pageX - x) / Math.max(1, width)));
-      const nextValue = Math.max(0, Math.min(1, 1 - (pageY - y) / Math.max(1, height)));
-      onChange(Math.round(nextSaturation * 100), Math.round(nextValue * 100));
-    });
-  };
-
   return (
     <View
-      ref={areaRef}
       onLayout={(event: LayoutChangeEvent) => setSize(event.nativeEvent.layout)}
-      onStartShouldSetResponder={() => true}
-      onStartShouldSetResponderCapture={() => true}
-      onMoveShouldSetResponder={() => true}
-      onMoveShouldSetResponderCapture={() => true}
-      onResponderGrant={(event) => {
-        onDragStart?.();
-        updateFromEvent(event);
-      }}
-      onResponderMove={updateFromEvent}
-      onResponderRelease={onDragEnd}
-      onResponderTerminate={onDragEnd}
-      onResponderTerminationRequest={() => false}
       style={[styles.colorArea, { borderColor: colors.border }]}
     >
       {colorAreaRows.map((row) => (
         <View key={`row-${row}`} style={styles.colorAreaRow}>
           {colorAreaColumns.map((column) => (
-            <View
+            <Pressable
               key={`cell-${row}-${column}`}
+              onPress={() => onChange(Math.round(column * 100), Math.round((1 - row) * 100))}
               style={[
                 styles.colorAreaCell,
                 { backgroundColor: hsvToHex({ h: hsv.h, s: Math.round(column * 100), v: Math.round((1 - row) * 100) }) },
@@ -459,8 +407,6 @@ function ColorSlider({
   valueText,
   getColor,
   onChange,
-  onDragEnd,
-  onDragStart,
   onNudge,
 }: {
   label: string;
@@ -470,42 +416,22 @@ function ColorSlider({
   valueText: string;
   getColor: (ratio: number) => string;
   onChange: (value: number) => void;
-  onDragEnd?: () => void;
-  onDragStart?: () => void;
   onNudge: (amount: number) => void;
 }) {
-  const sliderRef = useRef<View>(null);
-  const [width, setWidth] = useState(1);
   const ratio = Math.max(0, Math.min(1, value / max));
-  const updateFromEvent = (event: GestureResponderEvent) => {
-    sliderRef.current?.measureInWindow((x, _y, measuredWidth) => {
-      const nextRatio = Math.max(0, Math.min(1, (event.nativeEvent.pageX - x) / Math.max(1, measuredWidth || width)));
-      onChange(Math.round(nextRatio * max));
-    });
-  };
 
   return (
     <View style={styles.sliderBlock}>
       <PickerHeader label={label} value={valueText} colors={colors} onMinus={() => onNudge(max === 360 ? -5 : -2)} onPlus={() => onNudge(max === 360 ? 5 : 2)} />
       <View
-        ref={sliderRef}
-        onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
-        onStartShouldSetResponder={() => true}
-        onStartShouldSetResponderCapture={() => true}
-        onMoveShouldSetResponder={() => true}
-        onMoveShouldSetResponderCapture={() => true}
-        onResponderGrant={(event) => {
-          onDragStart?.();
-          updateFromEvent(event);
-        }}
-        onResponderMove={updateFromEvent}
-        onResponderRelease={onDragEnd}
-        onResponderTerminate={onDragEnd}
-        onResponderTerminationRequest={() => false}
         style={[styles.sliderTrack, { borderColor: colors.border }]}
       >
         {sliderSteps.map((step) => (
-          <View key={`${label}-${step}`} style={[styles.sliderSegment, { backgroundColor: getColor(step) }]} />
+          <Pressable
+            key={`${label}-${step}`}
+            onPress={() => onChange(Math.round(step * max))}
+            style={[styles.sliderSegment, { backgroundColor: getColor(step) }]}
+          />
         ))}
         <View
           pointerEvents="none"

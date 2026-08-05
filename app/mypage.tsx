@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useScrollToTop } from '@react-navigation/native';
+import { useScrollToTop } from '@react-navigation/native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,9 +28,7 @@ export default function MyPageScreen() {
   const { colors } = useAppTheme();
   const { goods } = useGoods();
   const { activeProfileId, addProfilePreset, profile, profiles, removeProfile, selectProfile, updateProfile } = useProfile();
-  const navigation = useNavigation();
   const scrollRef = useRef<ScrollView>(null);
-  const [colorPickerDragging, setColorPickerDragging] = useState(false);
   const [oshiName, setOshiName] = useState(profile.oshiName);
   const [seriesName, setSeriesName] = useState(profile.seriesName);
   const [imageUrl, setImageUrl] = useState(profile.imageUrl ?? '');
@@ -50,13 +48,6 @@ export default function MyPageScreen() {
     setMarkIcon((profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap);
     setMarkColor(profile.markColor ?? colors.primary);
   }, [colors.primary, profile]);
-
-  useEffect(() => {
-    navigation.setOptions({
-      fullScreenGestureEnabled: !colorPickerDragging,
-      gestureEnabled: !colorPickerDragging,
-    });
-  }, [colorPickerDragging, navigation]);
 
   const ownedForOshi = useMemo(() => {
     const targetName = oshiName.trim() || profile.oshiName.trim();
@@ -152,7 +143,6 @@ export default function MyPageScreen() {
         ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        scrollEnabled={!colorPickerDragging}
         showsVerticalScrollIndicator={false}
       >
         <View>
@@ -307,13 +297,7 @@ export default function MyPageScreen() {
             ))}
           </View>
 
-          <ColorPicker
-            compact
-            value={markColor}
-            onChange={setMarkColor}
-            onDragEnd={() => setColorPickerDragging(false)}
-            onDragStart={() => setColorPickerDragging(true)}
-          />
+          <ColorPicker compact value={markColor} onChange={setMarkColor} />
 
           <Text style={[styles.label, { color: colors.muted }]}>メモ</Text>
           <TextInput

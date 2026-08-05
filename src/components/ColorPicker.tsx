@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { GestureResponderEvent, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { hexToHsv, hslToHex, hsvToHex, HsvColor } from '../lib/color';
 import { useAppTheme } from '../store/ThemeContext';
@@ -10,13 +10,11 @@ const colorAreaRows = Array.from({ length: 8 }, (_, index) => index / 7);
 
 type Props = {
   compact?: boolean;
-  onDragEnd?: () => void;
-  onDragStart?: () => void;
   value: string;
   onChange: (hex: string) => void;
 };
 
-export function ColorPicker({ compact = false, onDragEnd, onDragStart, value, onChange }: Props) {
+export function ColorPicker({ compact = false, value, onChange }: Props) {
   const { colors } = useAppTheme();
   const hsv = useMemo(() => hexToHsv(value), [value]);
   const previewTextColor = hsv.v > 62 && hsv.s < 75 ? '#111111' : '#ffffff';
@@ -25,18 +23,13 @@ export function ColorPicker({ compact = false, onDragEnd, onDragStart, value, on
   };
 
   return (
-    <View
-      onTouchCancel={onDragEnd}
-      onTouchEnd={onDragEnd}
-      onTouchStart={onDragStart}
-      style={[styles.colorPicker, compact && styles.compactColorPicker]}
-    >
+    <View style={[styles.colorPicker, compact && styles.compactColorPicker]}>
       {!compact ? (
         <View style={[styles.colorPreviewLarge, { backgroundColor: value, borderColor: colors.border }]}>
           <Text style={[styles.colorPreviewText, { color: previewTextColor }]}>{value.toUpperCase()}</Text>
         </View>
       ) : null}
-      <ColorArea hsv={hsv} onChange={(s, v) => updateHsv({ s, v })} onDragEnd={onDragEnd} onDragStart={onDragStart} />
+      <ColorArea hsv={hsv} onChange={(s, v) => updateHsv({ s, v })} />
       <ColorSlider
         label="色相"
         value={hsv.h}
@@ -44,63 +37,29 @@ export function ColorPicker({ compact = false, onDragEnd, onDragStart, value, on
         valueText={`${hsv.h}`}
         getColor={(ratio) => hslToHex({ h: Math.round(ratio * 360), s: 86, l: 54 })}
         onChange={(next) => updateHsv({ h: next })}
-        onDragEnd={onDragEnd}
-        onDragStart={onDragStart}
         onNudge={(amount) => updateHsv({ h: Math.max(0, Math.min(360, hsv.h + amount)) })}
       />
     </View>
   );
 }
 
-function ColorArea({
-  hsv,
-  onChange,
-  onDragEnd,
-  onDragStart,
-}: {
-  hsv: HsvColor;
-  onChange: (saturation: number, value: number) => void;
-  onDragEnd?: () => void;
-  onDragStart?: () => void;
-}) {
+function ColorArea({ hsv, onChange }: { hsv: HsvColor; onChange: (saturation: number, value: number) => void }) {
   const { colors } = useAppTheme();
-  const areaRef = useRef<View>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const saturationRatio = Math.max(0, Math.min(1, hsv.s / 100));
   const valueRatio = Math.max(0, Math.min(1, hsv.v / 100));
 
-  const updateFromEvent = (event: GestureResponderEvent) => {
-    const { pageX, pageY } = event.nativeEvent;
-    areaRef.current?.measureInWindow((x, y, width, height) => {
-      const nextSaturation = Math.max(0, Math.min(1, (pageX - x) / Math.max(1, width)));
-      const nextValue = Math.max(0, Math.min(1, 1 - (pageY - y) / Math.max(1, height)));
-      onChange(Math.round(nextSaturation * 100), Math.round(nextValue * 100));
-    });
-  };
-
   return (
     <View
-      ref={areaRef}
       onLayout={(event: LayoutChangeEvent) => setSize(event.nativeEvent.layout)}
-      onStartShouldSetResponder={() => true}
-      onStartShouldSetResponderCapture={() => true}
-      onMoveShouldSetResponder={() => true}
-      onMoveShouldSetResponderCapture={() => true}
-      onResponderGrant={(event) => {
-        onDragStart?.();
-        updateFromEvent(event);
-      }}
-      onResponderMove={updateFromEvent}
-      onResponderRelease={onDragEnd}
-      onResponderTerminate={onDragEnd}
-      onResponderTerminationRequest={() => false}
       style={[styles.colorArea, { borderColor: colors.border }]}
     >
       {colorAreaRows.map((row) => (
         <View key={`row-${row}`} style={styles.colorAreaRow}>
           {colorAreaColumns.map((column) => (
-            <View
+            <Pressable
               key={`cell-${row}-${column}`}
+              onPress={() => onChange(Math.round(column * 100), Math.round((1 - row) * 100))}
               style={[
                 styles.colorAreaCell,
                 { backgroundColor: hsvToHex({ h: hsv.h, s: Math.round(column * 100), v: Math.round((1 - row) * 100) }) },
@@ -131,8 +90,6 @@ function ColorSlider({
   valueText,
   getColor,
   onChange,
-  onDragEnd,
-  onDragStart,
   onNudge,
 }: {
   label: string;
@@ -141,20 +98,10 @@ function ColorSlider({
   valueText: string;
   getColor: (ratio: number) => string;
   onChange: (value: number) => void;
-  onDragEnd?: () => void;
-  onDragStart?: () => void;
   onNudge: (amount: number) => void;
 }) {
   const { colors } = useAppTheme();
-  const sliderRef = useRef<View>(null);
-  const [width, setWidth] = useState(1);
   const ratio = Math.max(0, Math.min(1, value / max));
-  const updateFromEvent = (event: GestureResponderEvent) => {
-    sliderRef.current?.measureInWindow((x, _y, measuredWidth) => {
-      const nextRatio = Math.max(0, Math.min(1, (event.nativeEvent.pageX - x) / Math.max(1, measuredWidth || width)));
-      onChange(Math.round(nextRatio * max));
-    });
-  };
 
   return (
     <View style={styles.sliderBlock}>
@@ -173,24 +120,14 @@ function ColorSlider({
         </View>
       </View>
       <View
-        ref={sliderRef}
-        onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
-        onStartShouldSetResponder={() => true}
-        onStartShouldSetResponderCapture={() => true}
-        onMoveShouldSetResponder={() => true}
-        onMoveShouldSetResponderCapture={() => true}
-        onResponderGrant={(event) => {
-          onDragStart?.();
-          updateFromEvent(event);
-        }}
-        onResponderMove={updateFromEvent}
-        onResponderRelease={onDragEnd}
-        onResponderTerminate={onDragEnd}
-        onResponderTerminationRequest={() => false}
         style={[styles.sliderTrack, { borderColor: colors.border }]}
       >
         {sliderSteps.map((step) => (
-          <View key={`${label}-${step}`} style={[styles.sliderSegment, { backgroundColor: getColor(step) }]} />
+          <Pressable
+            key={`${label}-${step}`}
+            onPress={() => onChange(Math.round(step * max))}
+            style={[styles.sliderSegment, { backgroundColor: getColor(step) }]}
+          />
         ))}
         <View
           pointerEvents="none"
