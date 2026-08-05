@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ColorPicker } from '../src/components/ColorPicker';
 import { GoodsImageField } from '../src/components/GoodsImageField';
+import { normalizeHex } from '../src/lib/color';
 import { searchProductsByName } from '../src/lib/productLookup';
 import { useGoods } from '../src/store/GoodsContext';
 import { useProfile } from '../src/store/ProfileContext';
@@ -248,7 +250,7 @@ export default function MyPageScreen() {
             </View>
             <TextInput
               value={markColor}
-              onChangeText={setMarkColor}
+              onChangeText={(value) => setMarkColor(normalizeHex(value))}
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="#e94f7d"
@@ -289,6 +291,8 @@ export default function MyPageScreen() {
               />
             ))}
           </View>
+
+          <ColorPicker compact value={markColor} onChange={setMarkColor} />
 
           <Text style={[styles.label, { color: colors.muted }]}>メモ</Text>
           <TextInput

@@ -17,7 +17,7 @@ function RootStack() {
         screenOptions={{
           animation: 'slide_from_right',
           contentStyle: { backgroundColor: colors.background },
-          fullScreenGestureEnabled: true,
+          fullScreenGestureEnabled: false,
           gestureEnabled: true,
           headerShown: false,
         }}
