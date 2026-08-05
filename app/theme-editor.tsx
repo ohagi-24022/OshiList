@@ -348,6 +348,7 @@ function ColorPicker({
         onChange={(next) => updateHsv({ h: next })}
         onNudge={(amount) => updateHsv({ h: Math.max(0, Math.min(360, hsv.h + amount)) })}
       />
+      <ToneControls hsv={hsv} colors={colors} onChange={updateHsv} />
     </View>
   );
 }
@@ -444,6 +445,62 @@ function ColorSlider({
             },
           ]}
         />
+      </View>
+    </View>
+  );
+}
+
+function ToneControls({
+  hsv,
+  colors,
+  onChange,
+}: {
+  hsv: HsvColor;
+  colors: ReturnType<typeof useAppTheme>['colors'];
+  onChange: (patch: Partial<HsvColor>) => void;
+}) {
+  return (
+    <View style={styles.toneGrid}>
+      <ToneStepper
+        colors={colors}
+        label="彩度"
+        value={hsv.s}
+        onChange={(amount) => onChange({ s: Math.max(0, Math.min(100, hsv.s + amount)) })}
+      />
+      <ToneStepper
+        colors={colors}
+        label="明るさ"
+        value={hsv.v}
+        onChange={(amount) => onChange({ v: Math.max(0, Math.min(100, hsv.v + amount)) })}
+      />
+    </View>
+  );
+}
+
+function ToneStepper({
+  colors,
+  label,
+  value,
+  onChange,
+}: {
+  colors: ReturnType<typeof useAppTheme>['colors'];
+  label: string;
+  value: number;
+  onChange: (amount: number) => void;
+}) {
+  return (
+    <View style={[styles.toneCard, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+      <View>
+        <Text style={[styles.toneLabel, { color: colors.text }]}>{label}</Text>
+        <Text style={[styles.toneValue, { color: colors.muted }]}>{value}%</Text>
+      </View>
+      <View style={styles.toneButtons}>
+        <Pressable onPress={() => onChange(-2)} style={[styles.toneButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons color={colors.text} name="remove" size={18} />
+        </Pressable>
+        <Pressable onPress={() => onChange(2)} style={[styles.toneButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons color={colors.text} name="add" size={18} />
+        </Pressable>
       </View>
     </View>
   );
@@ -588,6 +645,25 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     width: 52,
+  },
+  toneGrid: { flexDirection: 'row', gap: 10 },
+  toneCard: {
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    gap: 10,
+    padding: 10,
+  },
+  toneLabel: { fontSize: 13, fontWeight: '900' },
+  toneValue: { fontSize: 12, fontWeight: '800', marginTop: 2 },
+  toneButtons: { flexDirection: 'row', gap: 8 },
+  toneButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    height: 38,
+    justifyContent: 'center',
   },
   notice: {
     alignItems: 'center',
