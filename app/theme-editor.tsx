@@ -58,7 +58,10 @@ export default function ThemeEditorScreen() {
   }, [colors.primary]);
 
   useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !colorPickerDragging });
+    navigation.setOptions({
+      fullScreenGestureEnabled: !colorPickerDragging,
+      gestureEnabled: !colorPickerDragging,
+    });
   }, [colorPickerDragging, navigation]);
 
   const characterSuggestions = useMemo(() => {
@@ -347,7 +350,12 @@ function ColorPicker({
     onColorChange(hsvToHex({ ...hsv, ...patch }));
   };
   return (
-    <View style={[styles.colorPicker, compact && styles.compactColorPicker]}>
+    <View
+      onTouchCancel={onDragEnd}
+      onTouchEnd={onDragEnd}
+      onTouchStart={onDragStart}
+      style={[styles.colorPicker, compact && styles.compactColorPicker]}
+    >
       {!compact ? (
         <View style={[styles.colorPreviewLarge, { backgroundColor: hex, borderColor: colors.border }]}>
           <Text style={[styles.colorPreviewText, { color: previewTextColor }]}>{hex.toUpperCase()}</Text>
@@ -402,7 +410,9 @@ function ColorArea({
       ref={areaRef}
       onLayout={(event: LayoutChangeEvent) => setSize(event.nativeEvent.layout)}
       onStartShouldSetResponder={() => true}
+      onStartShouldSetResponderCapture={() => true}
       onMoveShouldSetResponder={() => true}
+      onMoveShouldSetResponderCapture={() => true}
       onResponderGrant={(event) => {
         onDragStart?.();
         updateFromEvent(event);
@@ -410,6 +420,7 @@ function ColorArea({
       onResponderMove={updateFromEvent}
       onResponderRelease={onDragEnd}
       onResponderTerminate={onDragEnd}
+      onResponderTerminationRequest={() => false}
       style={[styles.colorArea, { borderColor: colors.border }]}
     >
       {colorAreaRows.map((row) => (
@@ -480,7 +491,9 @@ function ColorSlider({
         ref={sliderRef}
         onLayout={(event: LayoutChangeEvent) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
         onStartShouldSetResponder={() => true}
+        onStartShouldSetResponderCapture={() => true}
         onMoveShouldSetResponder={() => true}
+        onMoveShouldSetResponderCapture={() => true}
         onResponderGrant={(event) => {
           onDragStart?.();
           updateFromEvent(event);
@@ -488,6 +501,7 @@ function ColorSlider({
         onResponderMove={updateFromEvent}
         onResponderRelease={onDragEnd}
         onResponderTerminate={onDragEnd}
+        onResponderTerminationRequest={() => false}
         style={[styles.sliderTrack, { borderColor: colors.border }]}
       >
         {sliderSteps.map((step) => (

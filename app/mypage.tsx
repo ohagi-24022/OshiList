@@ -52,7 +52,10 @@ export default function MyPageScreen() {
   }, [colors.primary, profile]);
 
   useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !colorPickerDragging });
+    navigation.setOptions({
+      fullScreenGestureEnabled: !colorPickerDragging,
+      gestureEnabled: !colorPickerDragging,
+    });
   }, [colorPickerDragging, navigation]);
 
   const ownedForOshi = useMemo(() => {
