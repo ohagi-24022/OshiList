@@ -61,6 +61,46 @@ export default function SettingsScreen() {
           <Ionicons color="#ffffff" name="chevron-forward" size={18} />
         </Pressable>
 
+        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.panelTitle, { color: colors.text }]}>テーマプリセット</Text>
+          {!!customPresets.length && (
+            <Text style={[styles.panelHelp, { color: colors.muted }]}>
+              保存したテーマは右上の削除ボタンから消せます。標準テーマは削除できません。
+            </Text>
+          )}
+          <View style={styles.presetGrid}>
+            {presets.map((preset) => (
+              <Pressable
+                key={preset.id}
+                onPress={() => setPreset(preset)}
+                style={[styles.preset, { borderColor: colors.border, backgroundColor: preset.background }]}
+              >
+                {preset.custom ? (
+                  <Pressable
+                    accessibilityLabel={`${preset.name}を削除`}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      confirmDeletePreset(preset);
+                    }}
+                    style={[styles.deleteButton, { backgroundColor: preset.surface, borderColor: preset.border }]}
+                  >
+                    <Ionicons color={preset.danger} name="trash-outline" size={16} />
+                  </Pressable>
+                ) : null}
+                <View style={styles.presetSwatches}>
+                  <View style={[styles.swatch, { backgroundColor: preset.primary }]} />
+                  <View style={[styles.swatch, { backgroundColor: preset.secondary }]} />
+                  <View style={[styles.swatch, { backgroundColor: preset.elevated }]} />
+                </View>
+                <Text style={[styles.presetText, { color: preset.text }]} numberOfLines={1}>
+                  {preset.name}
+                </Text>
+                {preset.custom ? <Text style={[styles.customBadge, { color: preset.muted }]}>保存済み</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         <Pressable
           onPress={() => router.push('/help')}
           style={[styles.helpButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -138,46 +178,6 @@ export default function SettingsScreen() {
                 />
               </View>
             </Pressable>
-          </View>
-        </View>
-
-        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.panelTitle, { color: colors.text }]}>テーマプリセット</Text>
-          {!!customPresets.length && (
-            <Text style={[styles.panelHelp, { color: colors.muted }]}>
-              保存したテーマは右上の削除ボタンから消せます。標準テーマは削除できません。
-            </Text>
-          )}
-          <View style={styles.presetGrid}>
-            {presets.map((preset) => (
-              <Pressable
-                key={preset.id}
-                onPress={() => setPreset(preset)}
-                style={[styles.preset, { borderColor: colors.border, backgroundColor: preset.background }]}
-              >
-                {preset.custom ? (
-                  <Pressable
-                    accessibilityLabel={`${preset.name}を削除`}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      confirmDeletePreset(preset);
-                    }}
-                    style={[styles.deleteButton, { backgroundColor: preset.surface, borderColor: preset.border }]}
-                  >
-                    <Ionicons color={preset.danger} name="trash-outline" size={16} />
-                  </Pressable>
-                ) : null}
-                <View style={styles.presetSwatches}>
-                  <View style={[styles.swatch, { backgroundColor: preset.primary }]} />
-                  <View style={[styles.swatch, { backgroundColor: preset.secondary }]} />
-                  <View style={[styles.swatch, { backgroundColor: preset.elevated }]} />
-                </View>
-                <Text style={[styles.presetText, { color: preset.text }]} numberOfLines={1}>
-                  {preset.name}
-                </Text>
-                {preset.custom ? <Text style={[styles.customBadge, { color: preset.muted }]}>保存済み</Text> : null}
-              </Pressable>
-            ))}
           </View>
         </View>
 
