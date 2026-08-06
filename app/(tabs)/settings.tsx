@@ -75,6 +75,20 @@ export default function SettingsScreen() {
           <Ionicons color={colors.muted} name="chevron-forward" size={18} />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/privacy')}
+          style={[styles.helpButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.helpIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="shield-checkmark-outline" size={23} />
+          </View>
+          <View style={styles.helpText}>
+            <Text style={[styles.helpTitle, { color: colors.text }]}>プライバシーポリシー</Text>
+            <Text style={[styles.helpBody, { color: colors.muted }]}>保存する情報や、外部APIへ送信される情報を確認できます。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+        </Pressable>
+
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>交換管理</Text>
           <Pressable
