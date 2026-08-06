@@ -61,7 +61,7 @@ export default function HelpScreen() {
 
         <View style={[styles.heroPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.heroIcon, { backgroundColor: colors.primary }]}>
-            <Ionicons color="#ffffff" name="help-buoy-outline" size={28} />
+            <Ionicons color="#ffffff" name="help-circle-outline" size={30} />
           </View>
           <View style={styles.heroText}>
             <Text style={[styles.heroTitle, { color: colors.text }]}>迷ったら未整理で登録</Text>

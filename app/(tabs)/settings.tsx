@@ -66,7 +66,7 @@ export default function SettingsScreen() {
           style={[styles.helpButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
         >
           <View style={[styles.helpIcon, { backgroundColor: colors.elevated }]}>
-            <Ionicons color={colors.primary} name="help-buoy-outline" size={22} />
+            <Ionicons color={colors.primary} name="help-circle-outline" size={24} />
           </View>
           <View style={styles.helpText}>
             <Text style={[styles.helpTitle, { color: colors.text }]}>ヘルプ</Text>
