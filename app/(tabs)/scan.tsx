@@ -22,11 +22,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
 import { persistPickedImage, requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
-import { lookupProductByJan, parseReceiptImage, searchProductsByPhoto } from '../../src/lib/productLookup';
+import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
 import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
-import { Goods, ProductLookupResult, ReceiptParseResult } from '../../src/types';
+import { Goods, PhotoInferResult, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
 type ScanMode = 'barcode' | 'receipt' | 'photo' | 'manual';
 type ReceiptSource = 'camera' | 'library';
@@ -53,7 +53,7 @@ export default function ScanScreen() {
   const [statusMessage, setStatusMessage] = useState('枠内にJANコードを合わせてください。');
   const [result, setResult] = useState<ProductLookupResult | null>(null);
   const [receiptResult, setReceiptResult] = useState<ReceiptParseResult | null>(null);
-  const [photoResult, setPhotoResult] = useState<ReceiptParseResult | null>(null);
+  const [photoResult, setPhotoResult] = useState<PhotoInferResult | null>(null);
   const [photoImageUri, setPhotoImageUri] = useState<string | null>(null);
   const scanLockRef = useRef(false);
   const lastScannedJanRef = useRef<string | null>(null);
@@ -168,14 +168,14 @@ export default function ScanScreen() {
       const image = await readReceiptImage(source);
       if (!image) return;
       setPhotoImageUri(image.uri);
-      setReceiptStatus('写真から商品候補を検索中...');
-      const parsed = await searchProductsByPhoto(image.imageBase64, image.mimeType);
+      setReceiptStatus('写真から登録情報を推定中...');
+      const parsed = await inferGoodsFromPhoto(image.imageBase64, image.mimeType);
       setPhotoResult(parsed);
-      if (!parsed.items.length) {
-        Alert.alert('商品候補を作成できませんでした', '手動登録または別の写真で再試行してください。');
+      if (!parsed.boxName && !parsed.seriesName && !parsed.characterName && !parsed.goodsType) {
+        Alert.alert('推定できる情報が少なめです', '撮影した写真を商品画像にして、未整理として登録できます。');
       }
     } catch (error) {
-      Alert.alert('写真検索αを実行できませんでした', error instanceof Error ? error.message : 'もう一度お試しください。');
+      Alert.alert('写真登録αを実行できませんでした', error instanceof Error ? error.message : 'もう一度お試しください。');
     } finally {
       setReceiptStatus('');
       setLoading(false);
@@ -209,7 +209,7 @@ export default function ScanScreen() {
                   size={18}
                 />
                 <Text style={[styles.segmentText, { color: mode === value ? colors.text : colors.muted }]}>
-                  {value === 'barcode' ? 'バーコード' : value === 'receipt' ? '領収書' : value === 'photo' ? '写真検索α' : '手動登録'}
+                  {value === 'barcode' ? 'バーコード' : value === 'receipt' ? '領収書' : value === 'photo' ? '写真登録α' : '手動登録'}
                 </Text>
               </Pressable>
             ))}
@@ -332,9 +332,9 @@ export default function ScanScreen() {
               <View style={[styles.alphaBadge, { backgroundColor: colors.input, borderColor: colors.border }]}>
                 <Text style={[styles.alphaBadgeText, { color: colors.primary }]}>α版</Text>
               </View>
-              <Text style={[styles.receiptTitle, { color: colors.text }]}>写真から商品候補を探す</Text>
+              <Text style={[styles.receiptTitle, { color: colors.text }]}>写真からかんたん登録</Text>
               <Text style={[styles.receiptText, { color: colors.muted }]}>
-                商品やパッケージを撮影すると、AIが検索語を作成し、楽天/Yahooの商品候補を表示します。登録時は撮影した写真を商品画像にします。
+                商品やパッケージを撮影すると、AIがシリーズやキャラ、グッズ種別を控えめに推定します。登録時は撮影した写真を商品画像にして未整理で保存します。
               </Text>
               <View style={styles.receiptActions}>
                 <Pressable
@@ -374,15 +374,13 @@ export default function ScanScreen() {
 
         <ProductResultModal result={result} onClose={closeResult} />
         <ReceiptResultModal result={receiptResult} onClose={() => setReceiptResult(null)} />
-        <ReceiptResultModal
+        <PhotoInferModal
           result={photoResult}
           onClose={() => {
             setPhotoResult(null);
             setPhotoImageUri(null);
           }}
-          registrationImageUri={photoImageUri}
-          title="写真検索αの候補"
-          subtitle="AI推定のため、内容を確認してから登録してください。"
+          imageUri={photoImageUri}
         />
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -726,6 +724,78 @@ function ReceiptResultModal({
   );
 }
 
+function PhotoInferModal({ result, imageUri, onClose }: { result: PhotoInferResult | null; imageUri: string | null; onClose: () => void }) {
+  const { colors } = useAppTheme();
+  const { addGoods } = useGoods();
+  const fallbackBoxName = useMemo(() => {
+    if (!result) return '';
+    if (result.boxName.trim()) return result.boxName.trim();
+    const inferredName = [result.seriesName, result.characterName, result.goodsType].map((value) => value.trim()).filter(Boolean).join(' ');
+    return inferredName || '写真から登録したグッズ';
+  }, [result]);
+  const variantName = result?.variantName.trim() || result?.goodsType.trim() || '通常版';
+
+  return (
+    <Modal animationType="slide" transparent visible={!!result} onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBackdrop}>
+        <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetTitleBlock}>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>写真からかんたん登録α</Text>
+              <Text style={[styles.sheetSubtitle, { color: colors.muted }]}>AI推定を確認して、未整理として保存します。</Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.closeButton}>
+              <Ionicons color={colors.text} name="close" size={22} />
+            </Pressable>
+          </View>
+
+          {imageUri ? (
+            <View style={[styles.photoSourcePreview, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+              <Image source={{ uri: imageUri }} style={styles.photoSourceImage} />
+              <View style={styles.photoSourceTextBlock}>
+                <Text style={[styles.photoSourceTitle, { color: colors.text }]}>登録画像</Text>
+                <Text style={[styles.photoSourceText, { color: colors.muted }]}>この写真を商品の画像として保存します。</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {!!result?.warnings?.length && (
+            <View style={[styles.warningBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              {result.warnings.slice(0, 3).map((warning, warningIndex) => (
+                <Text key={`photo-warning-${warningIndex}-${warning}`} style={[styles.warningText, { color: colors.muted }]}>
+                  {warning}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {!!result && (
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={styles.photoFormScroll}>
+              <ManualGoodsForm
+                initialBoxName={fallbackBoxName}
+                initialSeriesName={result.seriesName}
+                initialCharacterName={result.characterName}
+                initialVariantName={variantName}
+                initialImageUrl={imageUri}
+                initialIsRandom={result.isRandom}
+                initialStatus="unorganized"
+                onSubmit={async (input) => {
+                  await addGoods({
+                    ...input,
+                    imageUrl: imageUri && input.imageUrl === imageUri ? await persistPickedImage(imageUri) : input.imageUrl,
+                    status: 'unorganized',
+                  });
+                  onClose();
+                }}
+              />
+            </ScrollView>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 function ProductPreview({ result }: { result: ProductLookupResult }) {
   const { colors } = useAppTheme();
   return (
@@ -898,6 +968,7 @@ const styles = StyleSheet.create({
   photoSourceTextBlock: { flex: 1 },
   photoSourceTitle: { fontSize: 14, fontWeight: '900' },
   photoSourceText: { fontSize: 12, fontWeight: '800', lineHeight: 17, marginTop: 3 },
+  photoFormScroll: { marginTop: 12 },
   productPreview: { borderRadius: 8, flexDirection: 'row', gap: 12, marginTop: 14, padding: 10 },
   productImage: { borderRadius: 6, borderWidth: 1, height: 72, overflow: 'hidden', width: 54 },
   productImageInner: { height: '100%', width: '100%' },

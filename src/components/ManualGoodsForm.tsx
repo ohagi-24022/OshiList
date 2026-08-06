@@ -16,6 +16,7 @@ type Props = {
   initialVariantName?: string;
   initialImageUrl?: string | null;
   initialIsRandom?: boolean;
+  initialStatus?: GoodsStatus;
   onSubmit: (input: GoodsInput) => Promise<void>;
 };
 
@@ -38,6 +39,7 @@ export function ManualGoodsForm({
   initialVariantName = '通常版',
   initialImageUrl = null,
   initialIsRandom = false,
+  initialStatus = 'owned',
   onSubmit,
 }: Props) {
   const { colors } = useAppTheme();
@@ -50,7 +52,7 @@ export function ManualGoodsForm({
   const [imageUrl, setImageUrl] = useState(initialImageUrl ?? '');
   const [isRandom, setIsRandom] = useState(initialIsRandom);
   const [quantity, setQuantity] = useState('1');
-  const [status, setStatus] = useState<GoodsStatus>('owned');
+  const [status, setStatus] = useState<GoodsStatus>(initialStatus);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -60,7 +62,8 @@ export function ManualGoodsForm({
     setVariantName(initialVariantName);
     setImageUrl(initialImageUrl ?? '');
     setIsRandom(initialIsRandom);
-  }, [initialBoxName, initialSeriesName, initialCharacterName, initialVariantName, initialImageUrl, initialIsRandom]);
+    setStatus(initialStatus);
+  }, [initialBoxName, initialSeriesName, initialCharacterName, initialVariantName, initialImageUrl, initialIsRandom, initialStatus]);
 
   const seriesSuggestions = useMemo(() => unique(goods.map((item) => item.seriesName)), [goods]);
   const characterSuggestions = useMemo(() => unique(goods.map((item) => item.characterName)), [goods]);
@@ -105,7 +108,7 @@ export function ManualGoodsForm({
       setImageUrl('');
       setIsRandom(initialIsRandom);
       setQuantity('1');
-      setStatus('owned');
+      setStatus(initialStatus);
     } finally {
       setSaving(false);
     }

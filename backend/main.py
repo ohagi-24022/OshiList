@@ -107,6 +107,17 @@ class ReceiptParseResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class PhotoInferResponse(BaseModel):
+    boxName: str = ""
+    seriesName: str = ""
+    characterName: str = ""
+    goodsType: str = ""
+    variantName: str = ""
+    isRandom: bool = False
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    warnings: list[str] = Field(default_factory=list)
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def landing_page() -> str:
     return """
@@ -556,36 +567,36 @@ async def extract_receipt_items_with_gemini(image_base64: str, mime_type: str) -
     return items, warnings
 
 
-async def extract_photo_product_queries_with_gemini(image_base64: str, mime_type: str) -> tuple[list[ReceiptExtractedItem], list[str]]:
+async def infer_goods_from_photo_with_gemini(image_base64: str, mime_type: str) -> PhotoInferResponse:
     if not GEMINI_API_KEY:
-        return [], ["GEMINI_API_KEYが未設定のため、写真検索αを実行できません。"]
+        return PhotoInferResponse(warnings=["GEMINI_API_KEYが未設定のため、写真から推定できません。"])
 
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     prompt = (
-        "この画像はアニメ・ゲーム・アイドル等の推しグッズの商品写真またはパッケージ写真です。"
-        "画像内の文字、ロゴ、キャラクター、グッズ種別を読み取り、楽天/Yahooの商品検索に使いやすい日本語クエリ候補を抽出してください。"
-        "JANコードや価格ではなく、作品名、シリーズ名、商品名、キャラクター名、グッズ種別を優先してください。"
-        "確信が低い場合はconfidenceを低くし、推測しすぎないでください。"
-        "候補は最大5件、重複を避け、検索語として自然な短さにしてください。"
+        "この画像は推しグッズの商品写真、パッケージ写真、またはグッズ本体の写真です。"
+        "商品を完全特定しようとせず、手動登録を補助するための情報だけを控えめに推定してください。"
+        "読める文字や確実な視覚情報を優先し、分からない項目は空文字にしてください。"
+        "boxNameは商品名が明確に読める場合だけ入れてください。分からない場合は空文字にしてください。"
+        "seriesNameは作品名やシリーズ名が分かる場合だけ入れてください。"
+        "characterNameはキャラクター名が分かる場合だけ入れてください。"
+        "goodsTypeは缶バッジ、アクリルスタンド、キーホルダー、カード、ぬいぐるみ等の種別を入れてください。"
+        "variantNameはホログラム、通常版、ミニキャラ等が分かる場合だけ入れてください。"
+        "isRandomはトレーディング、ランダム、全種、ブラインド等のランダム商品らしさが分かる場合だけtrueにしてください。"
+        "confidenceは全体の推定信頼度です。曖昧なら0.4以下にしてください。"
         "返答はJSONのみです。"
     )
     schema = {
         "type": "object",
         "properties": {
-            "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "rawText": {"type": "string"},
-                        "normalizedQuery": {"type": "string"},
-                        "confidence": {"type": "number"},
-                    },
-                    "required": ["rawText", "normalizedQuery", "confidence"],
-                },
-            },
+            "boxName": {"type": "string"},
+            "seriesName": {"type": "string"},
+            "characterName": {"type": "string"},
+            "goodsType": {"type": "string"},
+            "variantName": {"type": "string"},
+            "isRandom": {"type": "boolean"},
+            "confidence": {"type": "number"},
         },
-        "required": ["items"],
+        "required": ["boxName", "seriesName", "characterName", "goodsType", "variantName", "isRandom", "confidence"],
     }
 
     try:
@@ -610,15 +621,34 @@ async def extract_photo_product_queries_with_gemini(image_base64: str, mime_type
                 },
             )
     except httpx.RequestError:
-        return [], ["Gemini APIへ接続できなかったため、写真検索αに失敗しました。"]
+        return PhotoInferResponse(warnings=["Gemini APIへ接続できなかったため、写真から推定できませんでした。"])
 
     if response.status_code != 200:
-        return [], [gemini_error_message(response)]
+        return PhotoInferResponse(warnings=[gemini_error_message(response)])
 
     parsed = parse_json_from_gemini(response.json())
-    items = parse_receipt_items(parsed.get("items") if isinstance(parsed, dict) else parsed)
-    warnings = [] if items else ["写真から商品検索に使える候補を抽出できませんでした。"]
-    return items, warnings
+    if not isinstance(parsed, dict):
+        return PhotoInferResponse(warnings=["写真から登録情報を推定できませんでした。"])
+
+    try:
+        confidence = float(parsed.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    result = PhotoInferResponse(
+        boxName=str(parsed.get("boxName") or parsed.get("box_name") or "").strip(),
+        seriesName=str(parsed.get("seriesName") or parsed.get("series_name") or "").strip(),
+        characterName=str(parsed.get("characterName") or parsed.get("character_name") or "").strip(),
+        goodsType=str(parsed.get("goodsType") or parsed.get("goods_type") or "").strip(),
+        variantName=str(parsed.get("variantName") or parsed.get("variant_name") or "").strip(),
+        isRandom=bool(parsed.get("isRandom") if "isRandom" in parsed else parsed.get("is_random", False)),
+        confidence=max(0.0, min(1.0, confidence)),
+    )
+    if result.confidence < 0.45:
+        result.warnings.append("写真だけでは特定が難しいため、未整理として登録して後から確認してください。")
+    if not any([result.boxName, result.seriesName, result.characterName, result.goodsType]):
+        result.warnings.append("登録に使える情報をほとんど推定できませんでした。")
+    return result
 
 
 def gemini_error_message(response: httpx.Response) -> str:
@@ -746,24 +776,9 @@ async def parse_receipt(request: ReceiptParseRequest) -> ReceiptParseResponse:
     return ReceiptParseResponse(items=response_items, warnings=warnings)
 
 
-@app.post("/photo/search", response_model=ReceiptParseResponse)
-async def search_photo(request: ReceiptParseRequest) -> ReceiptParseResponse:
-    extracted_items, warnings = await extract_photo_product_queries_with_gemini(request.imageBase64, request.mimeType)
-    response_items: list[ReceiptItemCandidate] = []
-
-    for item in extracted_items:
-        candidates, search_warnings = await search_product_candidates(item.normalizedQuery, provider="auto", limit=4)
-        warnings.extend(search_warnings)
-        response_items.append(
-            ReceiptItemCandidate(
-                rawText=item.rawText,
-                normalizedQuery=item.normalizedQuery,
-                confidence=item.confidence,
-                candidates=candidates,
-            ),
-        )
-
-    return ReceiptParseResponse(items=response_items, warnings=warnings)
+@app.post("/photo/infer", response_model=PhotoInferResponse)
+async def infer_photo(request: ReceiptParseRequest) -> PhotoInferResponse:
+    return await infer_goods_from_photo_with_gemini(request.imageBase64, request.mimeType)
 
 
 @app.post("/analyze-lineup", response_model=AnalyzeLineupResponse)

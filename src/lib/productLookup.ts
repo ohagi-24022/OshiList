@@ -1,4 +1,4 @@
-import { ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
+import { PhotoInferResult, ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
 
 type LookupApiResponse = Partial<{
   janCode: string;
@@ -33,6 +33,23 @@ type ReceiptApiResponse = Partial<{
       candidates: ProductCandidateApiResponse[];
     }>
   >;
+  warnings: string[];
+}>;
+
+type PhotoInferApiResponse = Partial<{
+  boxName: string;
+  box_name: string;
+  seriesName: string;
+  series_name: string;
+  characterName: string;
+  character_name: string;
+  goodsType: string;
+  goods_type: string;
+  variantName: string;
+  variant_name: string;
+  isRandom: boolean;
+  is_random: boolean;
+  confidence: number;
   warnings: string[];
 }>;
 
@@ -149,13 +166,13 @@ export async function parseReceiptImage(imageBase64: string, mimeType = 'image/j
   };
 }
 
-export async function searchProductsByPhoto(imageBase64: string, mimeType = 'image/jpeg'): Promise<ReceiptParseResult> {
+export async function inferGoodsFromPhoto(imageBase64: string, mimeType = 'image/jpeg'): Promise<PhotoInferResult> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    throw new Error('オフラインのため写真から商品候補を検索できません。手動登録に切り替えてください。');
+    throw new Error('オフラインのため写真から推定できません。手動登録に切り替えてください。');
   }
 
   const response = await fetchWithTimeout(
-    `${apiBaseUrl()}/photo/search`,
+    `${apiBaseUrl()}/photo/infer`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -163,27 +180,20 @@ export async function searchProductsByPhoto(imageBase64: string, mimeType = 'ima
     },
     RECEIPT_TIMEOUT_MS,
   );
-  const payload = (await response.json().catch(() => null)) as ReceiptApiResponse | null;
+  const payload = (await response.json().catch(() => null)) as PhotoInferApiResponse | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));
   }
 
   return {
+    boxName: payload?.boxName ?? payload?.box_name ?? '',
+    seriesName: payload?.seriesName ?? payload?.series_name ?? '',
+    characterName: payload?.characterName ?? payload?.character_name ?? '',
+    goodsType: payload?.goodsType ?? payload?.goods_type ?? '',
+    variantName: payload?.variantName ?? payload?.variant_name ?? '',
+    isRandom: Boolean(payload?.isRandom ?? payload?.is_random ?? false),
+    confidence: Number(payload?.confidence ?? 0),
     warnings: payload?.warnings ?? [],
-    items: (payload?.items ?? [])
-      .map((item) => ({
-        rawText: item.rawText ?? item.raw_text ?? '',
-        normalizedQuery: item.normalizedQuery ?? item.normalized_query ?? '',
-        confidence: Number(item.confidence ?? 0),
-        candidates: (item.candidates ?? [])
-          .map((candidate) => ({
-            boxName: candidate.boxName ?? candidate.box_name ?? '',
-            imageUrl: candidate.imageUrl ?? candidate.image_url ?? null,
-            sourceLabel: candidate.sourceLabel ?? candidate.source_label ?? '商品検索API',
-          }))
-          .filter((candidate) => candidate.boxName.trim().length > 0),
-      }))
-      .filter((item) => item.normalizedQuery.trim().length > 0),
   };
 }
 

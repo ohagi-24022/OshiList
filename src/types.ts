@@ -56,3 +56,14 @@ export type ReceiptParseResult = {
   items: ReceiptItemCandidate[];
   warnings?: string[];
 };
+
+export type PhotoInferResult = {
+  boxName: string;
+  seriesName: string;
+  characterName: string;
+  goodsType: string;
+  variantName: string;
+  isRandom: boolean;
+  confidence: number;
+  warnings?: string[];
+};
