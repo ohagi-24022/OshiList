@@ -24,10 +24,11 @@ function extensionFromUri(uri: string) {
   return extension && extension.length <= 5 ? extension : 'jpg';
 }
 
-async function persistPickedImage(uri: string) {
+export async function persistPickedImage(uri: string) {
   await ensureImageDir();
   const extension = extensionFromUri(uri);
-  const destination = `${IMAGE_DIR}${Date.now()}.${extension}`;
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const destination = `${IMAGE_DIR}${Date.now()}-${suffix}.${extension}`;
   await FileSystem.copyAsync({ from: uri, to: destination });
   return destination;
 }

@@ -556,6 +556,71 @@ async def extract_receipt_items_with_gemini(image_base64: str, mime_type: str) -
     return items, warnings
 
 
+async def extract_photo_product_queries_with_gemini(image_base64: str, mime_type: str) -> tuple[list[ReceiptExtractedItem], list[str]]:
+    if not GEMINI_API_KEY:
+        return [], ["GEMINI_API_KEYが未設定のため、写真検索αを実行できません。"]
+
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    prompt = (
+        "この画像はアニメ・ゲーム・アイドル等の推しグッズの商品写真またはパッケージ写真です。"
+        "画像内の文字、ロゴ、キャラクター、グッズ種別を読み取り、楽天/Yahooの商品検索に使いやすい日本語クエリ候補を抽出してください。"
+        "JANコードや価格ではなく、作品名、シリーズ名、商品名、キャラクター名、グッズ種別を優先してください。"
+        "確信が低い場合はconfidenceを低くし、推測しすぎないでください。"
+        "候補は最大5件、重複を避け、検索語として自然な短さにしてください。"
+        "返答はJSONのみです。"
+    )
+    schema = {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "rawText": {"type": "string"},
+                        "normalizedQuery": {"type": "string"},
+                        "confidence": {"type": "number"},
+                    },
+                    "required": ["rawText", "normalizedQuery", "confidence"],
+                },
+            },
+        },
+        "required": ["items"],
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=35) as client:
+            response = await client.post(
+                endpoint,
+                headers={"x-goog-api-key": GEMINI_API_KEY},
+                json={
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": prompt},
+                                {"inline_data": {"mime_type": mime_type, "data": image_base64}},
+                            ],
+                        },
+                    ],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "responseSchema": schema,
+                    },
+                },
+            )
+    except httpx.RequestError:
+        return [], ["Gemini APIへ接続できなかったため、写真検索αに失敗しました。"]
+
+    if response.status_code != 200:
+        return [], [gemini_error_message(response)]
+
+    parsed = parse_json_from_gemini(response.json())
+    items = parse_receipt_items(parsed.get("items") if isinstance(parsed, dict) else parsed)
+    warnings = [] if items else ["写真から商品検索に使える候補を抽出できませんでした。"]
+    return items, warnings
+
+
 def gemini_error_message(response: httpx.Response) -> str:
     try:
         payload = response.json()
@@ -668,6 +733,26 @@ async def parse_receipt(request: ReceiptParseRequest) -> ReceiptParseResponse:
 
     for item in extracted_items:
         candidates, search_warnings = await search_product_candidates(item.normalizedQuery, provider="auto", limit=3)
+        warnings.extend(search_warnings)
+        response_items.append(
+            ReceiptItemCandidate(
+                rawText=item.rawText,
+                normalizedQuery=item.normalizedQuery,
+                confidence=item.confidence,
+                candidates=candidates,
+            ),
+        )
+
+    return ReceiptParseResponse(items=response_items, warnings=warnings)
+
+
+@app.post("/photo/search", response_model=ReceiptParseResponse)
+async def search_photo(request: ReceiptParseRequest) -> ReceiptParseResponse:
+    extracted_items, warnings = await extract_photo_product_queries_with_gemini(request.imageBase64, request.mimeType)
+    response_items: list[ReceiptItemCandidate] = []
+
+    for item in extracted_items:
+        candidates, search_warnings = await search_product_candidates(item.normalizedQuery, provider="auto", limit=4)
         warnings.extend(search_warnings)
         response_items.append(
             ReceiptItemCandidate(

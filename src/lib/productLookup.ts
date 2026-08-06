@@ -149,6 +149,44 @@ export async function parseReceiptImage(imageBase64: string, mimeType = 'image/j
   };
 }
 
+export async function searchProductsByPhoto(imageBase64: string, mimeType = 'image/jpeg'): Promise<ReceiptParseResult> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('オフラインのため写真から商品候補を検索できません。手動登録に切り替えてください。');
+  }
+
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl()}/photo/search`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64, mimeType }),
+    },
+    RECEIPT_TIMEOUT_MS,
+  );
+  const payload = (await response.json().catch(() => null)) as ReceiptApiResponse | null;
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+
+  return {
+    warnings: payload?.warnings ?? [],
+    items: (payload?.items ?? [])
+      .map((item) => ({
+        rawText: item.rawText ?? item.raw_text ?? '',
+        normalizedQuery: item.normalizedQuery ?? item.normalized_query ?? '',
+        confidence: Number(item.confidence ?? 0),
+        candidates: (item.candidates ?? [])
+          .map((candidate) => ({
+            boxName: candidate.boxName ?? candidate.box_name ?? '',
+            imageUrl: candidate.imageUrl ?? candidate.image_url ?? null,
+            sourceLabel: candidate.sourceLabel ?? candidate.source_label ?? '商品検索API',
+          }))
+          .filter((candidate) => candidate.boxName.trim().length > 0),
+      }))
+      .filter((item) => item.normalizedQuery.trim().length > 0),
+  };
+}
+
 export async function searchProductsByName(query: string, limit = 5): Promise<ProductSearchCandidate[]> {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
