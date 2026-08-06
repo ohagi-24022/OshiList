@@ -61,6 +61,20 @@ export default function SettingsScreen() {
           <Ionicons color="#ffffff" name="chevron-forward" size={18} />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/help')}
+          style={[styles.helpButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.helpIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="help-buoy-outline" size={22} />
+          </View>
+          <View style={styles.helpText}>
+            <Text style={[styles.helpTitle, { color: colors.text }]}>ヘルプ</Text>
+            <Text style={[styles.helpBody, { color: colors.muted }]}>登録方法や写真登録α、未整理の整理方法を確認できます。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+        </Pressable>
+
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>交換管理</Text>
           <Pressable
@@ -190,6 +204,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   designButtonText: { color: '#ffffff', flex: 1, fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  helpButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 72,
+    padding: 12,
+  },
+  helpIcon: { alignItems: 'center', borderRadius: 8, height: 44, justifyContent: 'center', width: 44 },
+  helpText: { flex: 1 },
+  helpTitle: { fontSize: 16, fontWeight: '900' },
+  helpBody: { fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 4 },
   presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   preset: {
     borderRadius: 8,
