@@ -63,6 +63,7 @@ export default function ScanScreen() {
   const [checkJan, setCheckJan] = useState('');
   const [checkResult, setCheckResult] = useState<Goods[]>([]);
   const [openingCounts, setOpeningCounts] = useState<Record<number, number>>({});
+  const [eventAddVisible, setEventAddVisible] = useState(false);
   const scanLockRef = useRef(false);
   const lastScannedJanRef = useRef<string | null>(null);
 
@@ -247,6 +248,7 @@ export default function ScanScreen() {
     [goods],
   );
   const openingTotal = Object.values(openingCounts).reduce((sum, count) => sum + count, 0);
+  const eventPurchaseTotal = eventGoods.reduce((sum, item) => sum + item.quantity, 0);
   useScrollToTop(scrollRef);
 
   return (
@@ -512,21 +514,52 @@ export default function ScanScreen() {
               <View style={styles.receiptIcon}>
                 <Ionicons color={colors.primary} name="sparkles-outline" size={34} />
               </View>
-              <Text style={[styles.receiptTitle, { color: colors.text }]}>イベントモード</Text>
-              <Text style={[styles.receiptText, { color: colors.muted }]}>欲しい・予約済み・発送済みのグッズを大きめボタンで確認し、購入済みにできます。</Text>
+              <Text style={[styles.receiptTitle, { color: colors.text }]}>イベント購入リスト</Text>
+              <Text style={[styles.receiptText, { color: colors.muted }]}>
+                イベントで買う予定のグッズと購入数を管理します。買えたものは所持へ移せます。
+              </Text>
+              <View style={[styles.eventSummary, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                <View>
+                  <Text style={[styles.eventSummaryLabel, { color: colors.muted }]}>購入予定</Text>
+                  <Text style={[styles.eventSummaryValue, { color: colors.text }]}>{eventGoods.length}種類 / {eventPurchaseTotal}個</Text>
+                </View>
+                <Pressable onPress={() => setEventAddVisible((current) => !current)} style={[styles.eventAddButton, { backgroundColor: colors.primary }]}>
+                  <Ionicons color="#ffffff" name={eventAddVisible ? 'close' : 'add'} size={18} />
+                  <Text style={styles.eventAddText}>{eventAddVisible ? '閉じる' : '追加'}</Text>
+                </Pressable>
+              </View>
+              {eventAddVisible ? (
+                <ManualGoodsForm
+                  initialStatus="wanted"
+                  allowedStatuses={['wanted', 'reserved', 'ordered', 'shipped']}
+                  onSubmit={async (input) => {
+                    await addGoods(input);
+                    setEventAddVisible(false);
+                  }}
+                />
+              ) : null}
               <View style={styles.quickList}>
                 {eventGoods.slice(0, 20).map((item) => (
                   <View key={`event-${item.id}`} style={[styles.quickRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
                     <View style={styles.quickText}>
                       <Text numberOfLines={1} style={[styles.quickTitle, { color: colors.text }]}>{item.boxName}</Text>
-                      <Text numberOfLines={1} style={[styles.quickMeta, { color: colors.muted }]}>{goodsStatusLabels[item.status]} / 予定 {Math.max(1, item.quantity)}個</Text>
+                      <Text numberOfLines={1} style={[styles.quickMeta, { color: colors.muted }]}>{goodsStatusLabels[item.status]} / 購入予定 {item.quantity}個</Text>
+                    </View>
+                    <View style={styles.eventQuantityControls}>
+                      <Pressable onPress={() => updateQuantity(item.id, -1)} style={[styles.eventQuantityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Ionicons color={colors.text} name="remove" size={18} />
+                      </Pressable>
+                      <Text style={[styles.eventQuantityText, { color: colors.text }]}>{item.quantity}</Text>
+                      <Pressable onPress={() => updateQuantity(item.id, 1)} style={[styles.eventQuantityButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Ionicons color={colors.text} name="add" size={18} />
+                      </Pressable>
                     </View>
                     <Pressable onPress={() => markPurchased(item)} style={[styles.eventDoneButton, { backgroundColor: colors.primary }]}>
                       <Text style={styles.eventDoneText}>購入済み</Text>
                     </Pressable>
                   </View>
                 ))}
-                {!eventGoods.length ? <Text style={[styles.receiptText, { color: colors.muted }]}>欲しい・予約済みグッズを登録するとここに表示されます。</Text> : null}
+                {!eventGoods.length ? <Text style={[styles.receiptText, { color: colors.muted }]}>イベントで購入したいグッズを追加するとここに表示されます。</Text> : null}
               </View>
             </View>
           ) : mode === 'receipt' ? (
@@ -1186,6 +1219,31 @@ const styles = StyleSheet.create({
   quickTitle: { fontSize: 15, fontWeight: '900' },
   quickMeta: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   quickAdd: { alignItems: 'center', borderRadius: 999, height: 38, justifyContent: 'center', width: 38 },
+  eventSummary: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    padding: 12,
+    width: '100%',
+  },
+  eventSummaryLabel: { fontSize: 11, fontWeight: '800' },
+  eventSummaryValue: { fontSize: 17, fontWeight: '900', marginTop: 2 },
+  eventAddButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 5,
+    height: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  eventAddText: { color: '#ffffff', fontSize: 12, fontWeight: '900' },
+  eventQuantityControls: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  eventQuantityButton: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 34, justifyContent: 'center', width: 34 },
+  eventQuantityText: { fontSize: 14, fontWeight: '900', minWidth: 20, textAlign: 'center' },
   eventDoneButton: { alignItems: 'center', borderRadius: 8, height: 40, justifyContent: 'center', paddingHorizontal: 12 },
   eventDoneText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
   manualIntro: {

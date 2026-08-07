@@ -212,27 +212,27 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
       >
         <View style={styles.titleRow}>
           <View>
-            <Text style={[styles.title, { color: colors.text }]}>管理</Text>
+            <Text style={[styles.title, { color: colors.text }]}>コレクション</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : selectionMode ? `${selectedCount}件選択中` : `コレクション管理 ${collectionGoodsCount}種類`}
+              {loading ? '読み込み中' : selectionMode ? `${selectedCount}件選択中` : `管理中 ${collectionGoodsCount}種類`}
             </Text>
           </View>
           <View style={styles.headerActions}>
             {embedded ? (
               <Pressable
                 onPress={onShowCollection}
-                style={[styles.modeButton, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}
               >
                 <Ionicons color={colors.primary} name="albums-outline" size={18} />
-                <Text style={[styles.modeButtonText, { color: colors.text }]}>一覧</Text>
+                <Text style={[styles.summaryText, { color: colors.text }]}>一覧</Text>
               </Pressable>
             ) : null}
             <Pressable
               onPress={toggleSelectionMode}
-              style={[styles.modeButton, { borderColor: colors.border, backgroundColor: selectionMode ? colors.primary : colors.surface }]}
+              style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: selectionMode ? colors.primary : colors.surface }]}
             >
               <Ionicons color={selectionMode ? '#ffffff' : colors.primary} name={selectionMode ? 'close' : 'checkbox-outline'} size={18} />
-              <Text style={[styles.modeButtonText, { color: selectionMode ? '#ffffff' : colors.text }]}>
+              <Text style={[styles.summaryText, { color: selectionMode ? '#ffffff' : colors.text }]}>
                 {selectionMode ? '解除' : '選択'}
               </Text>
             </Pressable>
@@ -476,24 +476,29 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: {
     borderBottomWidth: 1,
+    elevation: 8,
     paddingBottom: 12,
     paddingHorizontal: 18,
     paddingTop: 8,
+    shadowColor: '#000000',
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
   },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   headerActions: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 12, marginTop: 2 },
-  modeButton: {
+  summaryBadge: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 6,
-    height: 36,
+    height: 34,
     paddingHorizontal: 12,
   },
-  modeButtonText: { fontSize: 12, fontWeight: '900' },
+  summaryText: { fontSize: 12, fontWeight: '800' },
   searchBox: {
     alignItems: 'center',
     borderRadius: 8,

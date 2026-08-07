@@ -23,17 +23,29 @@ function getDateKey(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function getWeekDays() {
+function getYearDays() {
   const today = new Date();
-  return Array.from({ length: 7 }, (_, index) => {
+  return Array.from({ length: 365 }, (_, index) => {
     const date = new Date(today);
     date.setDate(today.getDate() + index);
     return {
       key: getDateKey(date),
       day: date.getDate(),
+      monthKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      monthLabel: date.toLocaleDateString('ja-JP', { month: 'long', year: 'numeric' }),
       weekday: date.toLocaleDateString('ja-JP', { weekday: 'short' }),
     };
   });
+}
+
+function groupCalendarDays(days: ReturnType<typeof getYearDays>) {
+  const groups = new Map<string, { label: string; days: typeof days }>();
+  days.forEach((day) => {
+    const group = groups.get(day.monthKey) ?? { label: day.monthLabel, days: [] };
+    group.days.push(day);
+    groups.set(day.monthKey, group);
+  });
+  return Array.from(groups.entries()).map(([key, group]) => ({ key, ...group }));
 }
 
 function groupByScheduleDate(items: Goods[]) {
@@ -83,7 +95,8 @@ export default function ScheduleScreen() {
       }, {}),
     [goods],
   );
-  const weekDays = useMemo(() => getWeekDays(), []);
+  const yearDays = useMemo(() => getYearDays(), []);
+  const calendarMonths = useMemo(() => groupCalendarDays(yearDays), [yearDays]);
   const groupedSchedule = useMemo(() => groupByScheduleDate(scheduleGoods), [scheduleGoods]);
   const scheduleDateCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -171,23 +184,28 @@ export default function ScheduleScreen() {
             <View style={[styles.calendarPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.calendarHeader}>
                 <View>
-                  <Text style={[styles.calendarTitle, { color: colors.text }]}>今後7日</Text>
+                  <Text style={[styles.calendarTitle, { color: colors.text }]}>今後365日</Text>
                   <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
                 </View>
                 <Ionicons color={colors.primary} name="calendar-number-outline" size={24} />
               </View>
-              <View style={styles.weekRow}>
-                {weekDays.map((day) => {
-                  const count = scheduleDateCounts.get(day.key) ?? 0;
-                  return (
-                    <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
-                      <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
-                      <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
-                      <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
-                    </View>
-                  );
-                })}
-              </View>
+              {calendarMonths.map((month) => (
+                <View key={month.key} style={styles.monthBlock}>
+                  <Text style={[styles.monthTitle, { color: colors.text }]}>{month.label}</Text>
+                  <View style={styles.monthGrid}>
+                    {month.days.map((day) => {
+                      const count = scheduleDateCounts.get(day.key) ?? 0;
+                      return (
+                        <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
+                          <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
+                          <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
+                          <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </View>
 
             {groupedSchedule.map(([dateLabel, items]) => (
@@ -342,8 +360,10 @@ const styles = StyleSheet.create({
   calendarHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   calendarTitle: { fontSize: 17, fontWeight: '900' },
   calendarSubtitle: { fontSize: 12, marginTop: 2 },
-  weekRow: { flexDirection: 'row', gap: 6, marginTop: 12 },
-  dayCell: { alignItems: 'center', borderRadius: 8, flex: 1, minHeight: 72, justifyContent: 'center', paddingVertical: 7 },
+  monthBlock: { marginTop: 14 },
+  monthTitle: { fontSize: 14, fontWeight: '900', marginBottom: 8 },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  dayCell: { alignItems: 'center', borderRadius: 8, minHeight: 58, justifyContent: 'center', paddingVertical: 6, width: 42 },
   weekdayText: { fontSize: 10, fontWeight: '900' },
   dayText: { fontSize: 18, fontWeight: '900', marginTop: 2 },
   dayCountText: { fontSize: 10, fontWeight: '900', marginTop: 2 },
