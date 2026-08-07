@@ -6,6 +6,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
+import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { isOshiGoods } from '../../src/lib/oshi';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { useGoods } from '../../src/store/GoodsContext';
@@ -24,8 +25,13 @@ export default function HomeScreen() {
   const oshiGoods = useMemo(() => ownedGoods.filter((item) => isOshiGoods(item, profile)), [ownedGoods, profile]);
   const recentGoods = useMemo(() => [...goods].sort((a, b) => b.id - a.id).slice(0, 4), [goods]);
   const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
+  const favoriteGoods = useMemo(() => ownedGoods.filter((item) => item.favorite).slice(0, 4), [ownedGoods]);
+  const reservationGoods = useMemo(
+    () => goods.filter((item) => item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped' || item.status === 'arrived').slice(0, 4),
+    [goods],
+  );
   const exchangeGoods = useMemo(
-    () => ownedGoods.filter((item) => item.isRandom && item.quantity > 1).sort((a, b) => b.quantity - a.quantity).slice(0, 4),
+    () => ownedGoods.filter((item) => item.isRandom && item.exchangeQuantity > 0).sort((a, b) => b.exchangeQuantity - a.exchangeQuantity).slice(0, 4),
     [ownedGoods],
   );
   const lineupProgress = useMemo(() => {
@@ -175,8 +181,40 @@ export default function HomeScreen() {
                   <HomeGoodsTile item={item} />
                   <View style={[styles.exchangeBadge, { backgroundColor: colors.primary }]}>
                     <Ionicons color="#ffffff" name="swap-horizontal-outline" size={13} />
-                    <Text style={styles.exchangeBadgeText}>交換可能 {item.quantity - 1}</Text>
+                    <Text style={styles.exchangeBadgeText}>交換可能 {item.exchangeQuantity}</Text>
                   </View>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {reservationGoods.length ? (
+          <>
+            <SectionHeader title="予約・到着チェック" actionLabel="イベントへ" onPress={() => router.push('/(tabs)/scan?mode=event')} />
+            <View style={styles.statusList}>
+              {reservationGoods.map((item) => (
+                <View key={`reservation-${item.id}`} style={[styles.statusListRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Ionicons color={colors.primary} name="calendar-outline" size={19} />
+                  <View style={styles.statusListText}>
+                    <Text numberOfLines={1} style={[styles.statusListTitle, { color: colors.text }]}>{item.boxName}</Text>
+                    <Text numberOfLines={1} style={[styles.statusListMeta, { color: colors.muted }]}>
+                      {goodsStatusLabels[item.status]} {item.reservationDeadline ? `/ 締切 ${item.reservationDeadline}` : ''} {item.releaseDate ? `/ ${item.releaseDate}` : ''}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {favoriteGoods.length ? (
+          <>
+            <SectionHeader title="お気に入り" actionLabel="コレクションへ" onPress={() => router.push('/(tabs)/collection')} />
+            <View style={styles.tileGrid}>
+              {favoriteGoods.map((item) => (
+                <View key={`favorite-${item.id}`} style={styles.tileItem}>
+                  <HomeGoodsTile item={item} />
                 </View>
               ))}
             </View>
@@ -379,6 +417,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   exchangeBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
+  statusList: { gap: 8, marginTop: 10 },
+  statusListRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 58,
+    padding: 12,
+  },
+  statusListText: { flex: 1 },
+  statusListTitle: { fontSize: 14, fontWeight: '900' },
+  statusListMeta: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   emptyPanel: {
     alignItems: 'center',
     borderRadius: 8,

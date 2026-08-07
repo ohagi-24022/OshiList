@@ -39,12 +39,13 @@ export default function ManageScreen() {
   const [bulkModalVisible, setBulkModalVisible] = useState(false);
   const [bulkSeriesName, setBulkSeriesName] = useState('');
   const [bulkCharacterName, setBulkCharacterName] = useState('');
+  const [bulkStorageLocation, setBulkStorageLocation] = useState('');
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return goods.filter((item) => {
       if (unorganizedOnly && item.status !== 'unorganized') return false;
-      const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode].filter(Boolean).join(' ');
+      const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode, item.storageLocation, item.usageLocation, item.tags].filter(Boolean).join(' ');
       return !normalized || target.toLowerCase().includes(normalized);
     });
   }, [goods, query, unorganizedOnly]);
@@ -148,11 +149,12 @@ export default function ManageScreen() {
   };
 
   const saveBulkUpdate = async () => {
-    const patch: { seriesName?: string; characterName?: string } = {};
+    const patch: { seriesName?: string; characterName?: string; storageLocation?: string } = {};
     if (bulkSeriesName.trim()) patch.seriesName = bulkSeriesName;
     if (bulkCharacterName.trim()) patch.characterName = bulkCharacterName;
-    if (!patch.seriesName && !patch.characterName) {
-      Alert.alert('入力してください', 'シリーズまたはキャラクターのどちらかを入力してください。');
+    if (bulkStorageLocation.trim()) patch.storageLocation = bulkStorageLocation;
+    if (!patch.seriesName && !patch.characterName && !patch.storageLocation) {
+      Alert.alert('入力してください', 'シリーズ、キャラクター、保管場所のいずれかを入力してください。');
       return;
     }
 
@@ -160,6 +162,7 @@ export default function ManageScreen() {
     setBulkModalVisible(false);
     setBulkSeriesName('');
     setBulkCharacterName('');
+    setBulkStorageLocation('');
     setSelectedIds(new Set());
     setSelectionMode(false);
   };
@@ -323,6 +326,15 @@ export default function ManageScreen() {
                 style={[styles.bulkInput, { backgroundColor: colors.input, color: colors.text }]}
               />
               <SuggestionRow values={characterSuggestions} colors={colors} onSelect={setBulkCharacterName} />
+
+              <Text style={[styles.bulkLabel, { color: colors.muted }]}>保管場所</Text>
+              <TextInput
+                value={bulkStorageLocation}
+                onChangeText={setBulkStorageLocation}
+                placeholder="空欄なら変更しません"
+                placeholderTextColor={colors.muted}
+                style={[styles.bulkInput, { backgroundColor: colors.input, color: colors.text }]}
+              />
 
               {!!selectedGoods.length && (
                 <View style={[styles.previewBox, { backgroundColor: colors.input, borderColor: colors.border }]}>

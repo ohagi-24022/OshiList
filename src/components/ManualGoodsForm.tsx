@@ -23,6 +23,9 @@ type Props = {
 const statuses: Array<[GoodsStatus, string]> = [
   ['owned', '所持'],
   ['reserved', '予約済み'],
+  ['ordered', '発送済み'],
+  ['shipped', '到着待ち'],
+  ['arrived', '到着'],
   ['wanted', '欲しい'],
   ['unorganized', '未整理'],
 ];
@@ -327,12 +330,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   presetSaveText: { fontSize: 13, fontWeight: '900' },
-  statusRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   statusButton: {
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    flex: 1,
+    flexBasis: '30%',
+    flexGrow: 1,
     height: 38,
     justifyContent: 'center',
   },

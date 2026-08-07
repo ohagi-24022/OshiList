@@ -3,6 +3,7 @@ import { useIsFocused, useScrollToTop } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,12 +24,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
 import { persistPickedImage, requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
 import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
+import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, PhotoInferResult, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
-type ScanMode = 'barcode' | 'receipt' | 'photo' | 'manual';
+type ScanMode = 'barcode' | 'check' | 'opening' | 'event' | 'receipt' | 'photo' | 'manual';
 type ReceiptSource = 'camera' | 'library';
 type ReceiptCandidateChoice = {
   boxName: string;
@@ -40,7 +42,8 @@ type ReceiptCandidateChoice = {
 
 export default function ScanScreen() {
   const { colors } = useAppTheme();
-  const { addGoods } = useGoods();
+  const { addGoods, goods, updateGoods, updateQuantity } = useGoods();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const isFocused = useIsFocused();
   const [permission, requestPermission] = useCameraPermissions();
@@ -55,8 +58,25 @@ export default function ScanScreen() {
   const [receiptResult, setReceiptResult] = useState<ReceiptParseResult | null>(null);
   const [photoResult, setPhotoResult] = useState<PhotoInferResult | null>(null);
   const [photoImageUri, setPhotoImageUri] = useState<string | null>(null);
+  const [checkJan, setCheckJan] = useState('');
+  const [checkResult, setCheckResult] = useState<Goods[]>([]);
+  const [openingCounts, setOpeningCounts] = useState<Record<number, number>>({});
   const scanLockRef = useRef(false);
   const lastScannedJanRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      params.mode === 'barcode' ||
+      params.mode === 'check' ||
+      params.mode === 'opening' ||
+      params.mode === 'event' ||
+      params.mode === 'receipt' ||
+      params.mode === 'photo' ||
+      params.mode === 'manual'
+    ) {
+      setMode(params.mode);
+    }
+  }, [params.mode]);
 
   const resetScanLock = () => {
     scanLockRef.current = false;
@@ -99,6 +119,26 @@ export default function ScanScreen() {
   const closeResult = () => {
     setResult(null);
     resetScanLock();
+  };
+
+  const checkBeforeBuy = (janCode: string) => {
+    const normalizedJan = janCode.trim();
+    if (!normalizedJan) return;
+    setCheckJan(normalizedJan);
+    setCheckResult(goods.filter((item) => item.janCode === normalizedJan));
+  };
+
+  const registerOpening = async (item: Goods) => {
+    await updateQuantity(item.id, 1);
+    setOpeningCounts((current) => ({ ...current, [item.id]: (current[item.id] ?? 0) + 1 }));
+  };
+
+  const markPurchased = async (item: Goods) => {
+    await updateGoods(item.id, {
+      ...item,
+      status: 'owned',
+      quantity: Math.max(1, item.quantity),
+    });
   };
 
   const readReceiptImage = async (source: ReceiptSource) => {
@@ -182,7 +222,10 @@ export default function ScanScreen() {
     }
   };
 
-  const cameraReady = Platform.OS !== 'web' && permission?.granted && isFocused && mode === 'barcode';
+  const cameraReady = Platform.OS !== 'web' && permission?.granted && isFocused && (mode === 'barcode' || mode === 'check');
+  const openingGoods = useMemo(() => goods.filter((item) => item.isRandom && item.status !== 'unorganized'), [goods]);
+  const eventGoods = useMemo(() => goods.filter((item) => item.status === 'wanted' || item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped'), [goods]);
+  const openingTotal = Object.values(openingCounts).reduce((sum, count) => sum + count, 0);
   useScrollToTop(scrollRef);
 
   return (
@@ -197,7 +240,7 @@ export default function ScanScreen() {
           </View>
 
           <View style={[styles.segment, { backgroundColor: colors.input }]}>
-            {(['barcode', 'receipt', 'photo', 'manual'] as ScanMode[]).map((value) => (
+            {(['barcode', 'check', 'opening', 'event', 'receipt', 'photo', 'manual'] as ScanMode[]).map((value) => (
               <Pressable
                 key={value}
                 onPress={() => setMode(value)}
@@ -205,11 +248,37 @@ export default function ScanScreen() {
               >
                 <Ionicons
                   color={mode === value ? colors.primary : colors.muted}
-                  name={value === 'barcode' ? 'barcode-outline' : value === 'receipt' ? 'receipt-outline' : value === 'photo' ? 'camera-outline' : 'create-outline'}
+                  name={
+                    value === 'barcode'
+                      ? 'barcode-outline'
+                      : value === 'check'
+                        ? 'shield-checkmark-outline'
+                        : value === 'opening'
+                          ? 'cube-outline'
+                          : value === 'event'
+                            ? 'sparkles-outline'
+                            : value === 'receipt'
+                              ? 'receipt-outline'
+                              : value === 'photo'
+                                ? 'camera-outline'
+                                : 'create-outline'
+                  }
                   size={18}
                 />
                 <Text style={[styles.segmentText, { color: mode === value ? colors.text : colors.muted }]}>
-                  {value === 'barcode' ? 'バーコード' : value === 'receipt' ? '領収書' : value === 'photo' ? '写真登録α' : '手動登録'}
+                  {value === 'barcode'
+                    ? 'バーコード'
+                    : value === 'check'
+                      ? '買う前'
+                      : value === 'opening'
+                        ? '連続開封'
+                        : value === 'event'
+                          ? 'イベント'
+                          : value === 'receipt'
+                            ? '領収書'
+                            : value === 'photo'
+                              ? '写真登録α'
+                              : '手動登録'}
                 </Text>
               </Pressable>
             ))}
@@ -295,6 +364,112 @@ export default function ScanScreen() {
                 )}
               </View>
             </>
+          ) : mode === 'check' ? (
+            <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.receiptIcon}>
+                <Ionicons color={colors.primary} name="shield-checkmark-outline" size={34} />
+              </View>
+              <Text style={[styles.receiptTitle, { color: colors.text }]}>買う前チェック</Text>
+              <Text style={[styles.receiptText, { color: colors.muted }]}>
+                店頭やイベント会場でJANを読むと、所持・予約済み・欲しい登録をローカルから確認します。
+              </Text>
+              <View style={[styles.checkCameraBox, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                {cameraReady ? (
+                  <CameraView
+                    barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'] }}
+                    onBarcodeScanned={({ data }) => checkBeforeBuy(data)}
+                    style={styles.checkCamera}
+                  />
+                ) : (
+                  <View style={styles.checkFallback}>
+                    <Ionicons color={colors.muted} name="barcode-outline" size={34} />
+                    {!permission?.granted && Platform.OS !== 'web' ? (
+                      <Pressable onPress={requestPermission} style={[styles.primaryButton, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.primaryButtonText}>カメラを許可する</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                )}
+              </View>
+              <View style={styles.lookupRow}>
+                <TextInput
+                  value={checkJan}
+                  onChangeText={setCheckJan}
+                  keyboardType="number-pad"
+                  placeholder="4900000000000"
+                  placeholderTextColor={colors.muted}
+                  style={[styles.janInput, { backgroundColor: colors.input, color: colors.text }]}
+                />
+                <Pressable onPress={() => checkBeforeBuy(checkJan)} style={[styles.lookupButton, { backgroundColor: colors.primary }]}>
+                  <Ionicons color="#ffffff" name="search" size={18} />
+                </Pressable>
+              </View>
+              {checkJan ? (
+                <View style={[styles.checkResultBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                  <Text style={[styles.checkResultTitle, { color: colors.text }]}>
+                    {checkResult.length ? `登録済み ${checkResult.length}件` : '未所持'}
+                  </Text>
+                  {checkResult.length ? (
+                    checkResult.map((item) => (
+                      <View key={`check-${item.id}`} style={styles.checkResultRow}>
+                        <Text numberOfLines={1} style={[styles.checkResultName, { color: colors.text }]}>
+                          {item.characterName} / {item.variantName}
+                        </Text>
+                        <Text style={[styles.checkResultMeta, { color: colors.muted }]}>
+                          {goodsStatusLabels[item.status]} / {item.quantity}個
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={[styles.receiptText, { color: colors.muted }]}>このJANはローカル登録に見つかりませんでした。</Text>
+                  )}
+                </View>
+              ) : null}
+            </View>
+          ) : mode === 'opening' ? (
+            <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.receiptIcon}>
+                <Ionicons color={colors.primary} name="cube-outline" size={34} />
+              </View>
+              <Text style={[styles.receiptTitle, { color: colors.text }]}>連続開封モード</Text>
+              <Text style={[styles.receiptText, { color: colors.muted }]}>ランダムグッズをタップするだけで +1 します。今回の開封数: {openingTotal}</Text>
+              <View style={styles.quickList}>
+                {openingGoods.slice(0, 16).map((item) => (
+                  <Pressable key={`opening-${item.id}`} onPress={() => registerOpening(item)} style={[styles.quickRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                    <View style={styles.quickText}>
+                      <Text numberOfLines={1} style={[styles.quickTitle, { color: colors.text }]}>{item.characterName}</Text>
+                      <Text numberOfLines={1} style={[styles.quickMeta, { color: colors.muted }]}>{item.boxName} / 今回 +{openingCounts[item.id] ?? 0}</Text>
+                    </View>
+                    <View style={[styles.quickAdd, { backgroundColor: colors.primary }]}>
+                      <Ionicons color="#ffffff" name="add" size={20} />
+                    </View>
+                  </Pressable>
+                ))}
+                {!openingGoods.length ? <Text style={[styles.receiptText, { color: colors.muted }]}>ランダムグッズを登録するとここに表示されます。</Text> : null}
+              </View>
+            </View>
+          ) : mode === 'event' ? (
+            <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.receiptIcon}>
+                <Ionicons color={colors.primary} name="sparkles-outline" size={34} />
+              </View>
+              <Text style={[styles.receiptTitle, { color: colors.text }]}>イベントモード</Text>
+              <Text style={[styles.receiptText, { color: colors.muted }]}>欲しい・予約済み・発送済みのグッズを大きめボタンで確認し、購入済みにできます。</Text>
+              <View style={styles.quickList}>
+                {eventGoods.slice(0, 20).map((item) => (
+                  <View key={`event-${item.id}`} style={[styles.quickRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                    <View style={styles.quickText}>
+                      <Text numberOfLines={1} style={[styles.quickTitle, { color: colors.text }]}>{item.boxName}</Text>
+                      <Text numberOfLines={1} style={[styles.quickMeta, { color: colors.muted }]}>{goodsStatusLabels[item.status]} / 予定 {Math.max(1, item.quantity)}個</Text>
+                    </View>
+                    <Pressable onPress={() => markPurchased(item)} style={[styles.eventDoneButton, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.eventDoneText}>購入済み</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                {!eventGoods.length ? <Text style={[styles.receiptText, { color: colors.muted }]}>欲しい・予約済みグッズを登録するとここに表示されます。</Text> : null}
+              </View>
+            </View>
           ) : mode === 'receipt' ? (
             <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.receiptIcon}>
@@ -917,6 +1092,30 @@ const styles = StyleSheet.create({
   receiptText: { fontSize: 13, lineHeight: 19, marginTop: 8, textAlign: 'center' },
   receiptActions: { gap: 10, marginTop: 16, width: '100%' },
   receiptStatus: { fontSize: 12, fontWeight: '800', lineHeight: 18, marginTop: 12, textAlign: 'center' },
+  checkCameraBox: { borderRadius: 8, borderWidth: 1, height: 150, marginTop: 14, overflow: 'hidden', width: '100%' },
+  checkCamera: { flex: 1 },
+  checkFallback: { alignItems: 'center', flex: 1, justifyContent: 'center' },
+  checkResultBox: { borderRadius: 8, borderWidth: 1, gap: 8, marginTop: 12, padding: 12, width: '100%' },
+  checkResultTitle: { fontSize: 18, fontWeight: '900' },
+  checkResultRow: { gap: 2 },
+  checkResultName: { fontSize: 14, fontWeight: '900' },
+  checkResultMeta: { fontSize: 12, fontWeight: '800' },
+  quickList: { gap: 8, marginTop: 14, width: '100%' },
+  quickRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 58,
+    padding: 10,
+  },
+  quickText: { flex: 1 },
+  quickTitle: { fontSize: 15, fontWeight: '900' },
+  quickMeta: { fontSize: 12, fontWeight: '800', marginTop: 3 },
+  quickAdd: { alignItems: 'center', borderRadius: 999, height: 38, justifyContent: 'center', width: 38 },
+  eventDoneButton: { alignItems: 'center', borderRadius: 8, height: 40, justifyContent: 'center', paddingHorizontal: 12 },
+  eventDoneText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
   manualIntro: {
     alignItems: 'flex-start',
     borderRadius: 8,

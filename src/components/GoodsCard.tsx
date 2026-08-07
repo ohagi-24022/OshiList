@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getCharacterAccentColor } from '../lib/characterAccent';
+import { goodsStatusLabels } from '../lib/goodsStatus';
 import { isOshiGoods } from '../lib/oshi';
 import { useProfile } from '../store/ProfileContext';
 import { useAppTheme } from '../store/ThemeContext';
@@ -17,13 +18,6 @@ type Props = {
   onRemove?: () => void;
 };
 
-const statusLabels: Record<Goods['status'], string> = {
-  owned: '所持',
-  reserved: '予約済み',
-  wanted: '欲しい',
-  unorganized: '未整理',
-};
-
 export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPress, onRemove }: Props) {
   const { colors } = useAppTheme();
   const { profile } = useProfile();
@@ -33,6 +27,7 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
   const markColor = profile.markColor || colors.primary;
   const markIcon = (profile.markIcon || 'heart') as keyof typeof Ionicons.glyphMap;
   const accentColor = markedAsOshi ? markColor : characterColor;
+  const targetReached = item.targetQuantity > 0 && item.quantity >= item.targetQuantity;
 
   return (
     <Pressable
@@ -94,11 +89,40 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         <Text numberOfLines={1} style={[styles.variant, { color: colors.muted }]}>
           {item.variantName}
         </Text>
+        {item.targetQuantity > 0 ? (
+          <View style={styles.progressBlock}>
+            <View style={[styles.progressTrack, { backgroundColor: colors.input }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: targetReached ? colors.secondary : colors.primary,
+                    width: `${Math.min(100, Math.round((item.quantity / item.targetQuantity) * 100))}%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.metaText, { color: colors.muted }]}>
+              現在 {item.quantity} / 目標 {item.targetQuantity}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.metaRow}>
+          {item.favorite ? <MetaChip icon="star" label="お気に入り" color={colors.primary} /> : null}
+          {item.exchangeQuantity > 0 ? <MetaChip icon="swap-horizontal-outline" label={`交換 ${item.exchangeQuantity}`} color={colors.secondary} /> : null}
+          {item.inUseQuantity > 0 ? <MetaChip icon="bag-handle-outline" label={`使用中 ${item.inUseQuantity}`} color={colors.primary} /> : null}
+          {item.storageLocation ? <MetaChip icon="file-tray-full-outline" label={item.storageLocation} color={colors.muted} /> : null}
+        </View>
+        {item.tags ? (
+          <Text numberOfLines={1} style={[styles.tags, { color: colors.muted }]}>
+            #{item.tags.split(',').map((tag) => tag.trim()).filter(Boolean).join(' #')}
+          </Text>
+        ) : null}
         <View style={styles.footer}>
           <View style={styles.statusGroup}>
             <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
               <View style={[styles.dot, { backgroundColor: characterColor ?? colors.secondary }]} />
-              <Text style={[styles.statusText, { color: colors.muted }]}>{statusLabels[item.status]}</Text>
+              <Text style={[styles.statusText, { color: colors.muted }]}>{goodsStatusLabels[item.status]}</Text>
             </View>
             {item.isRandom ? (
               <View style={[styles.status, { borderColor: colors.border, backgroundColor: colors.elevated }]}>
@@ -117,6 +141,17 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
         </View>
       </View>
     </Pressable>
+  );
+}
+
+function MetaChip({ icon, label, color }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string }) {
+  return (
+    <View style={styles.metaChip}>
+      <Ionicons color={color} name={icon} size={11} />
+      <Text numberOfLines={1} style={[styles.metaChipText, { color }]}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
@@ -166,6 +201,14 @@ const styles = StyleSheet.create({
   },
   oshiText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   variant: { fontSize: 12, marginTop: 3 },
+  progressBlock: { gap: 5, marginTop: 8 },
+  progressTrack: { borderRadius: 999, height: 7, overflow: 'hidden' },
+  progressFill: { borderRadius: 999, height: '100%' },
+  metaText: { fontSize: 11, fontWeight: '800' },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  metaChip: { alignItems: 'center', flexDirection: 'row', gap: 3, maxWidth: '100%' },
+  metaChipText: { fontSize: 10, fontWeight: '900', maxWidth: 140 },
+  tags: { fontSize: 10, fontWeight: '800', marginTop: 6 },
   footer: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
   statusGroup: { alignItems: 'center', flexDirection: 'row', flexShrink: 1, flexWrap: 'wrap', gap: 6 },
   status: {

@@ -1,4 +1,4 @@
-export type GoodsStatus = 'owned' | 'reserved' | 'wanted' | 'unorganized';
+export type GoodsStatus = 'owned' | 'reserved' | 'ordered' | 'shipped' | 'arrived' | 'wanted' | 'unorganized';
 
 export type Goods = {
   id: number;
@@ -11,6 +11,18 @@ export type Goods = {
   imageUrl: string | null;
   isRandom: boolean;
   status: GoodsStatus;
+  targetQuantity: number;
+  keepQuantity: number;
+  inUseQuantity: number;
+  exchangeQuantity: number;
+  storageLocation: string;
+  usageLocation: string;
+  collectionGoal: string;
+  releaseDate: string;
+  reservationDeadline: string;
+  pickupDate: string;
+  tags: string;
+  favorite: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -25,6 +37,18 @@ export type GoodsInput = {
   imageUrl?: string | null;
   isRandom?: boolean;
   status?: GoodsStatus;
+  targetQuantity?: number;
+  keepQuantity?: number;
+  inUseQuantity?: number;
+  exchangeQuantity?: number;
+  storageLocation?: string;
+  usageLocation?: string;
+  collectionGoal?: string;
+  releaseDate?: string;
+  reservationDeadline?: string;
+  pickupDate?: string;
+  tags?: string;
+  favorite?: boolean;
 };
 
 export type ProductLookupResult = {

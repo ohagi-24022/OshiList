@@ -15,6 +15,9 @@ type Props = {
 const statuses: Array<[GoodsStatus, string]> = [
   ['owned', '所持'],
   ['reserved', '予約済み'],
+  ['ordered', '発送済み'],
+  ['shipped', '到着待ち'],
+  ['arrived', '到着'],
   ['wanted', '欲しい'],
   ['unorganized', '未整理'],
 ];
@@ -30,6 +33,18 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
   const [isRandom, setIsRandom] = useState(item.isRandom);
   const [quantity, setQuantity] = useState(String(item.quantity));
   const [status, setStatus] = useState<GoodsStatus>(item.status);
+  const [targetQuantity, setTargetQuantity] = useState(String(item.targetQuantity || ''));
+  const [keepQuantity, setKeepQuantity] = useState(String(item.keepQuantity || ''));
+  const [inUseQuantity, setInUseQuantity] = useState(String(item.inUseQuantity || ''));
+  const [exchangeQuantity, setExchangeQuantity] = useState(String(item.exchangeQuantity || ''));
+  const [storageLocation, setStorageLocation] = useState(item.storageLocation);
+  const [usageLocation, setUsageLocation] = useState(item.usageLocation);
+  const [collectionGoal, setCollectionGoal] = useState(item.collectionGoal);
+  const [releaseDate, setReleaseDate] = useState(item.releaseDate);
+  const [reservationDeadline, setReservationDeadline] = useState(item.reservationDeadline);
+  const [pickupDate, setPickupDate] = useState(item.pickupDate);
+  const [tags, setTags] = useState(item.tags);
+  const [favorite, setFavorite] = useState(item.favorite);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -42,6 +57,18 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
     setIsRandom(item.isRandom);
     setQuantity(String(item.quantity));
     setStatus(item.status);
+    setTargetQuantity(String(item.targetQuantity || ''));
+    setKeepQuantity(String(item.keepQuantity || ''));
+    setInUseQuantity(String(item.inUseQuantity || ''));
+    setExchangeQuantity(String(item.exchangeQuantity || ''));
+    setStorageLocation(item.storageLocation);
+    setUsageLocation(item.usageLocation);
+    setCollectionGoal(item.collectionGoal);
+    setReleaseDate(item.releaseDate);
+    setReservationDeadline(item.reservationDeadline);
+    setPickupDate(item.pickupDate);
+    setTags(item.tags);
+    setFavorite(item.favorite);
   }, [item]);
 
   const disabled = !boxName.trim() || saving;
@@ -60,6 +87,18 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
         imageUrl: imageUrl.trim() || null,
         isRandom,
         status,
+        targetQuantity: Math.max(0, Number(targetQuantity) || 0),
+        keepQuantity: Math.max(0, Number(keepQuantity) || 0),
+        inUseQuantity: Math.max(0, Number(inUseQuantity) || 0),
+        exchangeQuantity: Math.max(0, Number(exchangeQuantity) || 0),
+        storageLocation,
+        usageLocation,
+        collectionGoal,
+        releaseDate,
+        reservationDeadline,
+        pickupDate,
+        tags,
+        favorite,
       });
     } finally {
       setSaving(false);
@@ -138,6 +177,64 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
+      <View style={styles.twoColumnRow}>
+        <View style={styles.flexItem}>
+          <Text style={[styles.label, { color: colors.muted }]}>目標数</Text>
+          <TextInput value={targetQuantity} onChangeText={setTargetQuantity} keyboardType="number-pad" placeholder="例: 20" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+        </View>
+        <View style={styles.flexItem}>
+          <Text style={[styles.label, { color: colors.muted }]}>交換可能数</Text>
+          <TextInput value={exchangeQuantity} onChangeText={setExchangeQuantity} keyboardType="number-pad" placeholder="例: 2" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+        </View>
+      </View>
+
+      <View style={styles.twoColumnRow}>
+        <View style={styles.flexItem}>
+          <Text style={[styles.label, { color: colors.muted }]}>保存用</Text>
+          <TextInput value={keepQuantity} onChangeText={setKeepQuantity} keyboardType="number-pad" placeholder="例: 1" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+        </View>
+        <View style={styles.flexItem}>
+          <Text style={[styles.label, { color: colors.muted }]}>使用中</Text>
+          <TextInput value={inUseQuantity} onChangeText={setInUseQuantity} keyboardType="number-pad" placeholder="例: 24" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+        </View>
+      </View>
+
+      <Text style={[styles.label, { color: colors.muted }]}>保管場所</Text>
+      <TextInput value={storageLocation} onChangeText={setStorageLocation} placeholder="例: ケースB > 2段目 > ポケット3" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+
+      <Text style={[styles.label, { color: colors.muted }]}>使用先</Text>
+      <TextInput value={usageLocation} onChangeText={setUsageLocation} placeholder="例: 痛バッグ / 祭壇 / ディスプレイ棚" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+
+      <Text style={[styles.label, { color: colors.muted }]}>収集方針</Text>
+      <TextInput value={collectionGoal} onChangeText={setCollectionGoal} placeholder="例: 推しだけ収集 / 無限回収 / 全種コンプ" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+
+      <View style={styles.twoColumnRow}>
+        <View style={styles.flexItem}>
+          <Text style={[styles.label, { color: colors.muted }]}>予約締切</Text>
+          <TextInput value={reservationDeadline} onChangeText={setReservationDeadline} placeholder="2026-08-20" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+        </View>
+        <View style={styles.flexItem}>
+          <Text style={[styles.label, { color: colors.muted }]}>発売/受取日</Text>
+          <TextInput value={releaseDate || pickupDate} onChangeText={(value) => { setReleaseDate(value); setPickupDate(value); }} placeholder="2026-09-15" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+        </View>
+      </View>
+
+      <Text style={[styles.label, { color: colors.muted }]}>タグ</Text>
+      <TextInput value={tags} onChangeText={setTags} placeholder="例: 等身, ライブ, お気に入り" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: favorite }}
+        onPress={() => setFavorite((current) => !current)}
+        style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+      >
+        <Ionicons color={favorite ? colors.primary : colors.muted} name={favorite ? 'star' : 'star-outline'} size={22} />
+        <View style={styles.checkTextBlock}>
+          <Text style={[styles.checkTitle, { color: colors.text }]}>お気に入り</Text>
+          <Text style={[styles.checkHelp, { color: colors.muted }]}>特に好きなグッズとしてホームや検索で見つけやすくします。</Text>
+        </View>
+      </Pressable>
+
       <View style={styles.statusRow}>
         {statuses.map(([value, label]) => (
           <Pressable
@@ -186,16 +283,19 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingHorizontal: 12,
   },
-  statusRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   statusButton: {
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    flex: 1,
+    flexBasis: '30%',
+    flexGrow: 1,
     height: 42,
     justifyContent: 'center',
   },
   statusText: { fontSize: 13, fontWeight: '800' },
+  twoColumnRow: { flexDirection: 'row', gap: 10 },
+  flexItem: { flex: 1 },
   checkRow: {
     alignItems: 'center',
     borderRadius: 8,
