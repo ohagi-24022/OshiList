@@ -16,6 +16,39 @@ function getScheduleDate(item: Goods) {
   return item.pickupDate || item.releaseDate || item.reservationDeadline || '';
 }
 
+function getDateKey(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getWeekDays() {
+  const today = new Date();
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+    return {
+      key: getDateKey(date),
+      day: date.getDate(),
+      weekday: date.toLocaleDateString('ja-JP', { weekday: 'short' }),
+    };
+  });
+}
+
+function groupByScheduleDate(items: Goods[]) {
+  const groups = new Map<string, Goods[]>();
+  items.forEach((item) => {
+    const key = getScheduleDate(item) || '日付未設定';
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  });
+  return Array.from(groups.entries()).sort(([left], [right]) => {
+    if (left === '日付未設定') return 1;
+    if (right === '日付未設定') return -1;
+    return left.localeCompare(right);
+  });
+}
+
 function compareSchedule(a: Goods, b: Goods) {
   const dateA = getScheduleDate(a);
   const dateB = getScheduleDate(b);
@@ -34,7 +67,7 @@ export default function ScheduleScreen() {
   const scheduleGoods = useMemo(
     () =>
       goods
-        .filter((item) => scheduleStatuses.includes(item.status))
+        .filter((item) => scheduleStatuses.includes(item.status) && item.quantity > 0)
         .filter((item) => selectedStatus === 'all' || item.status === selectedStatus)
         .sort(compareSchedule),
     [goods, selectedStatus],
@@ -44,11 +77,21 @@ export default function ScheduleScreen() {
   const statusCounts = useMemo(
     () =>
       scheduleStatuses.reduce<Record<string, number>>((result, status) => {
-        result[status] = goods.filter((item) => item.status === status).length;
+        result[status] = goods.filter((item) => item.status === status && item.quantity > 0).length;
         return result;
       }, {}),
     [goods],
   );
+  const weekDays = useMemo(() => getWeekDays(), []);
+  const groupedSchedule = useMemo(() => groupByScheduleDate(scheduleGoods), [scheduleGoods]);
+  const scheduleDateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    scheduleGoods.forEach((item) => {
+      const key = getScheduleDate(item);
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [scheduleGoods]);
 
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
@@ -82,25 +125,53 @@ export default function ScheduleScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {scheduleGoods.map((item) => (
-          <View key={item.id} style={styles.itemBlock}>
-            <View style={[styles.dateRow, { backgroundColor: colors.elevated }]}>
-              <Ionicons color={colors.primary} name="time-outline" size={15} />
-              <Text style={[styles.dateText, { color: colors.text }]}>
-                {getScheduleDate(item) || '日付未設定'} / {goodsStatusLabels[item.status]}
-              </Text>
-              <Pressable onPress={() => markOwned(item)} style={[styles.doneButton, { backgroundColor: colors.primary }]}>
-                <Text style={styles.doneText}>所持へ</Text>
-              </Pressable>
+        <View style={[styles.calendarPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.calendarHeader}>
+            <View>
+              <Text style={[styles.calendarTitle, { color: colors.text }]}>今後7日</Text>
+              <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
             </View>
-            <GoodsCard
-              item={item}
-              mode="manage"
-              onDecrease={() => updateQuantity(item.id, -1)}
-              onIncrease={() => updateQuantity(item.id, 1)}
-              onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
-              onPress={() => setSelected(item)}
-            />
+            <Ionicons color={colors.primary} name="calendar-number-outline" size={24} />
+          </View>
+          <View style={styles.weekRow}>
+            {weekDays.map((day) => {
+              const count = scheduleDateCounts.get(day.key) ?? 0;
+              return (
+                <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
+                  <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
+                  <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
+                  <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {groupedSchedule.map(([dateLabel, items]) => (
+          <View key={dateLabel} style={styles.dateGroup}>
+            <View style={[styles.dateGroupHeader, { backgroundColor: colors.elevated }]}>
+              <Ionicons color={colors.primary} name="time-outline" size={15} />
+              <Text style={[styles.dateText, { color: colors.text }]}>{dateLabel}</Text>
+              <Text style={[styles.dateCount, { color: colors.muted }]}>{items.length}件</Text>
+            </View>
+            {items.map((item) => (
+              <View key={item.id} style={styles.itemBlock}>
+                <View style={[styles.dateRow, { backgroundColor: colors.elevated }]}>
+                  <Text style={[styles.dateText, { color: colors.text }]}>{goodsStatusLabels[item.status]}</Text>
+                  <Pressable onPress={() => markOwned(item)} style={[styles.doneButton, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.doneText}>所持へ</Text>
+                  </Pressable>
+                </View>
+                <GoodsCard
+                  item={item}
+                  mode="manage"
+                  onDecrease={() => updateQuantity(item.id, -1)}
+                  onIncrease={() => updateQuantity(item.id, 1)}
+                  onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
+                  onPress={() => setSelected(item)}
+                />
+              </View>
+            ))}
           </View>
         ))}
         {!scheduleGoods.length ? (
@@ -166,6 +237,18 @@ const styles = StyleSheet.create({
   statusChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 36, justifyContent: 'center', paddingHorizontal: 13 },
   statusChipText: { fontSize: 12, fontWeight: '900' },
   content: { padding: 18, paddingBottom: 96 },
+  calendarPanel: { borderRadius: 8, borderWidth: 1, marginBottom: 16, padding: 12 },
+  calendarHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  calendarTitle: { fontSize: 17, fontWeight: '900' },
+  calendarSubtitle: { fontSize: 12, marginTop: 2 },
+  weekRow: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  dayCell: { alignItems: 'center', borderRadius: 8, flex: 1, minHeight: 72, justifyContent: 'center', paddingVertical: 7 },
+  weekdayText: { fontSize: 10, fontWeight: '900' },
+  dayText: { fontSize: 18, fontWeight: '900', marginTop: 2 },
+  dayCountText: { fontSize: 10, fontWeight: '900', marginTop: 2 },
+  dateGroup: { marginBottom: 14 },
+  dateGroupHeader: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', gap: 7, marginBottom: 8, minHeight: 38, paddingHorizontal: 10 },
+  dateCount: { fontSize: 12, fontWeight: '900' },
   itemBlock: { marginBottom: 12 },
   dateRow: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', gap: 7, marginBottom: 8, minHeight: 38, paddingHorizontal: 10 },
   dateText: { flex: 1, fontSize: 12, fontWeight: '900' },

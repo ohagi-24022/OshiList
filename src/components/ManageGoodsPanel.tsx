@@ -17,7 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GoodsCard } from './GoodsCard';
 import { GoodsEditForm } from './GoodsEditForm';
@@ -32,6 +32,7 @@ type Props = {
 
 export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) {
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
   const detailTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -199,7 +200,16 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
 
   return (
     <Root style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+            paddingTop: embedded ? insets.top + 10 : 8,
+          },
+        ]}
+      >
         <View style={styles.titleRow}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>管理</Text>
