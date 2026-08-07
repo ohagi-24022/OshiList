@@ -1,5 +1,5 @@
-import { ManageGoodsPanel } from '../../src/components/ManageGoodsPanel';
+import { Redirect } from 'expo-router';
 
 export default function ManageScreen() {
-  return <ManageGoodsPanel />;
+  return <Redirect href="/(tabs)/collection?mode=manage" />;
 }

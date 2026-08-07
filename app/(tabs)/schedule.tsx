@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
-import { GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Animated, GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
@@ -78,6 +78,7 @@ export default function ScheduleScreen() {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
   const [calendarTouchStart, setCalendarTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const calendarTranslateX = useRef(new Animated.Value(0)).current;
 
   const scheduleGoods = useMemo(
     () =>
@@ -116,14 +117,36 @@ export default function ScheduleScreen() {
   const rememberCalendarTouch = (event: GestureResponderEvent) => {
     setCalendarTouchStart({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
   };
+  const moveCalendarTouch = (event: GestureResponderEvent) => {
+    if (!calendarTouchStart) return;
+    const dx = event.nativeEvent.pageX - calendarTouchStart.x;
+    const dy = event.nativeEvent.pageY - calendarTouchStart.y;
+    if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      calendarTranslateX.setValue(Math.min(dx, 150));
+    }
+  };
   const finishCalendarTouch = (event: GestureResponderEvent) => {
     if (!calendarTouchStart) return;
     const dx = event.nativeEvent.pageX - calendarTouchStart.x;
     const dy = event.nativeEvent.pageY - calendarTouchStart.y;
     setCalendarTouchStart(null);
     if (dx > 80 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-      setViewMode('list');
+      Animated.timing(calendarTranslateX, {
+        duration: 180,
+        toValue: 420,
+        useNativeDriver: true,
+      }).start(() => {
+        calendarTranslateX.setValue(0);
+        setViewMode('list');
+      });
+      return;
     }
+    Animated.spring(calendarTranslateX, {
+      damping: 18,
+      stiffness: 220,
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
   };
 
   return (
@@ -188,7 +211,12 @@ export default function ScheduleScreen() {
             ))}
           </>
         ) : (
-          <View onTouchEnd={finishCalendarTouch} onTouchStart={rememberCalendarTouch}>
+          <Animated.View
+            onTouchEnd={finishCalendarTouch}
+            onTouchMove={moveCalendarTouch}
+            onTouchStart={rememberCalendarTouch}
+            style={{ transform: [{ translateX: calendarTranslateX }] }}
+          >
             <Pressable
               onPress={() => setViewMode('list')}
               style={[styles.backToListButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -261,7 +289,7 @@ export default function ScheduleScreen() {
                 ))}
               </View>
             ))}
-          </View>
+          </Animated.View>
         )}
         {!scheduleGoods.length ? (
           <View style={[styles.empty, { borderColor: colors.border }]}>

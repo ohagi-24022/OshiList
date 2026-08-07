@@ -9,14 +9,6 @@ import { useGoods } from '../../src/store/GoodsContext';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 
-const editableTabs = [
-  { id: 'collection', label: 'コレクション', icon: 'albums-outline' },
-  { id: 'schedule', label: '予定', icon: 'calendar-outline' },
-  { id: 'manage', label: '管理', icon: 'create-outline' },
-  { id: 'mypage', label: 'マイページ', icon: 'person-circle-outline' },
-  { id: 'event', label: 'イベント', icon: 'sparkles-outline' },
-] as const;
-
 export default function SettingsScreen() {
   const { colors, presets, setPreset, customPresets, deleteCustomPreset } = useAppTheme();
   const { settings, updateSettings } = useAppSettings();
@@ -36,16 +28,6 @@ export default function SettingsScreen() {
       },
     ]);
   };
-  const toggleUtilityTab = (id: string) => {
-    const current = settings.utilityTabs;
-    if (current.includes(id)) {
-      if (current.length <= 2) return;
-      updateSettings({ utilityTabs: current.filter((value) => value !== id).slice(0, 2) });
-      return;
-    }
-    updateSettings({ utilityTabs: [...current, id].slice(-2) });
-  };
-
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
@@ -200,22 +182,15 @@ export default function SettingsScreen() {
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>タブ編集</Text>
-          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・登録・設定は固定です。残り2つのタブを選択できます。</Text>
-          <View style={styles.tabOptionGrid}>
-            {editableTabs.map((tab) => {
-              const selected = settings.utilityTabs.includes(tab.id);
-              return (
-                <Pressable
-                  key={tab.id}
-                  onPress={() => toggleUtilityTab(tab.id)}
-                  style={[styles.tabOption, { backgroundColor: selected ? colors.text : colors.elevated, borderColor: colors.border }]}
-                >
-                  <Ionicons color={selected ? colors.background : colors.primary} name={tab.icon} size={18} />
-                  <Text style={[styles.tabOptionText, { color: selected ? colors.background : colors.text }]}>{tab.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・登録・設定は固定です。残り2つのタブを別ページで選択できます。</Text>
+          <Pressable onPress={() => router.push('/tab-editor')} style={[styles.editTabsButton, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+            <Ionicons color={colors.primary} name="options-outline" size={20} />
+            <View style={styles.editTabsText}>
+              <Text style={[styles.settingTitle, { color: colors.text }]}>表示タブを編集</Text>
+              <Text style={[styles.settingHelp, { color: colors.muted }]}>{settings.utilityTabs.join(' / ')}</Text>
+            </View>
+            <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+          </Pressable>
         </View>
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -317,18 +292,16 @@ const styles = StyleSheet.create({
     minHeight: 74,
     padding: 12,
   },
-  tabOptionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tabOption: {
+  editTabsButton: {
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    flexBasis: '47%',
     flexDirection: 'row',
-    gap: 7,
-    minHeight: 42,
-    paddingHorizontal: 10,
+    gap: 10,
+    minHeight: 58,
+    padding: 12,
   },
-  tabOptionText: { fontSize: 12, fontWeight: '900' },
+  editTabsText: { flex: 1 },
   switchTrack: {
     borderRadius: 999,
     height: 30,
