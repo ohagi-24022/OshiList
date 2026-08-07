@@ -20,20 +20,25 @@ const GoodsContext = createContext<GoodsContextValue | null>(null);
 const db = SQLite.openDatabaseSync('oshilist.db');
 
 function normalizedGoodsInput(input: GoodsInput) {
+  const quantity = Math.max(0, input.quantity ?? 1);
+  const targetQuantity = Math.max(0, input.targetQuantity ?? 0);
+  const keepQuantity = Math.max(0, input.keepQuantity ?? 0);
+  const autoExchangeQuantity = Math.max(0, quantity - Math.max(targetQuantity, keepQuantity));
+
   return {
     janCode: input.janCode?.trim() || null,
     boxName: input.boxName.trim(),
     seriesName: input.seriesName?.trim() || 'シリーズ未設定',
     characterName: input.characterName.trim() || '未分類',
     variantName: input.variantName.trim() || '通常版',
-    quantity: Math.max(0, input.quantity ?? 1),
+    quantity,
     imageUrl: input.imageUrl ?? null,
     isRandom: input.isRandom ?? false,
     status: input.status ?? 'owned',
-    targetQuantity: Math.max(0, input.targetQuantity ?? 0),
-    keepQuantity: Math.max(0, input.keepQuantity ?? 0),
+    targetQuantity,
+    keepQuantity,
     inUseQuantity: Math.max(0, input.inUseQuantity ?? 0),
-    exchangeQuantity: Math.max(0, input.exchangeQuantity ?? 0),
+    exchangeQuantity: Math.max(autoExchangeQuantity, input.exchangeQuantity ?? 0),
     storageLocation: input.storageLocation?.trim() || '',
     usageLocation: input.usageLocation?.trim() || '',
     collectionGoal: input.collectionGoal?.trim() || '',
@@ -46,6 +51,7 @@ function normalizedGoodsInput(input: GoodsInput) {
 }
 
 function mapGoods(row: Record<string, unknown>): Goods {
+  const rawStatus = String(row.status ?? 'owned');
   return {
     id: Number(row.id),
     janCode: (row.jan_code as string | null) ?? null,
@@ -56,7 +62,7 @@ function mapGoods(row: Record<string, unknown>): Goods {
     quantity: Number(row.quantity),
     imageUrl: (row.image_url as string | null) ?? null,
     isRandom: Number(row.is_random ?? 0) === 1,
-    status: String(row.status ?? 'owned') as GoodsStatus,
+    status: (rawStatus === 'arrived' ? 'shipped' : rawStatus) as GoodsStatus,
     targetQuantity: Number(row.target_quantity ?? 0),
     keepQuantity: Number(row.keep_quantity ?? 0),
     inUseQuantity: Number(row.in_use_quantity ?? 0),
@@ -234,8 +240,15 @@ export function GoodsProvider({ children }: PropsWithChildren) {
     async (id: number, delta: number) => {
       await db.runAsync(
         `UPDATE goods
-         SET quantity = MAX(quantity + ?, 0), updated_at = CURRENT_TIMESTAMP
+         SET quantity = MAX(quantity + ?, 0),
+             exchange_quantity = CASE
+               WHEN MAX(target_quantity, keep_quantity) > 0
+               THEN MAX(MAX(quantity + ?, 0) - MAX(target_quantity, keep_quantity), 0)
+               ELSE exchange_quantity
+             END,
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
+        delta,
         delta,
         id,
       );

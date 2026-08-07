@@ -39,8 +39,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="manage"
         options={{
-          title: '管理',
-          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="create-outline" size={size} />,
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="schedule"
+        options={{
+          title: '予定',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="calendar-outline" size={size} />,
         }}
       />
       <Tabs.Screen

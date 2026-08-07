@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
+import { ManageGoodsPanel } from '../../src/components/ManageGoodsPanel';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
@@ -106,6 +107,7 @@ function groupRandomGoods(goods: Goods[]) {
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { goods, loading } = useGoods();
@@ -121,6 +123,7 @@ export default function HomeScreen() {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(190);
   const [selectedRandomGroup, setSelectedRandomGroup] = useState<RandomGoodsGroup | null>(null);
+  const [screenMode, setScreenMode] = useState<'collection' | 'manage'>('collection');
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
@@ -175,6 +178,12 @@ export default function HomeScreen() {
     [groupMode],
   );
   useScrollToTop(listRef);
+
+  useEffect(() => {
+    if (params.mode === 'manage') {
+      setScreenMode('manage');
+    }
+  }, [params.mode]);
 
   const setHeaderHidden = (hidden: boolean) => {
     if (headerHiddenRef.current === hidden) return;
@@ -232,6 +241,10 @@ export default function HomeScreen() {
     }
   };
 
+  if (screenMode === 'manage') {
+    return <ManageGoodsPanel embedded onShowCollection={() => setScreenMode('collection')} />;
+  }
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <Animated.View
@@ -253,10 +266,15 @@ export default function HomeScreen() {
               {loading ? '読み込み中' : `${filtered.length}種類 / ${totalQuantity}個`}
             </Text>
           </View>
-          <View style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="管理を開く"
+            onPress={() => setScreenMode('manage')}
+            style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}
+          >
             <Ionicons color={colors.primary} name="albums-outline" size={18} />
-            <Text style={[styles.summaryText, { color: colors.text }]}>コレクション</Text>
-          </View>
+            <Text style={[styles.summaryText, { color: colors.text }]}>管理</Text>
+          </Pressable>
         </View>
 
         <View style={styles.searchRow}>

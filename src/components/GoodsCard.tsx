@@ -16,9 +16,10 @@ type Props = {
   onIncrease?: () => void;
   onPress?: () => void;
   onRemove?: () => void;
+  onToggleFavorite?: () => void;
 };
 
-export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPress, onRemove }: Props) {
+export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPress, onRemove, onToggleFavorite }: Props) {
   const { colors } = useAppTheme();
   const { profile } = useProfile();
   const isManage = mode === 'manage';
@@ -69,6 +70,18 @@ export function GoodsCard({ item, mode = 'manage', onDecrease, onIncrease, onPre
               style={styles.removeButton}
             >
               <Ionicons color={colors.muted} name="trash-outline" size={17} />
+            </Pressable>
+          ) : null}
+          {isManage && onToggleFavorite ? (
+            <Pressable
+              accessibilityLabel={item.favorite ? 'お気に入りを解除' : 'お気に入りに追加'}
+              onPress={(event) => {
+                event.stopPropagation();
+                onToggleFavorite();
+              }}
+              style={styles.removeButton}
+            >
+              <Ionicons color={item.favorite ? colors.primary : colors.muted} name={item.favorite ? 'star' : 'star-outline'} size={18} />
             </Pressable>
           ) : null}
         </View>

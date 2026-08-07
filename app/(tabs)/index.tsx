@@ -27,7 +27,7 @@ export default function HomeScreen() {
   const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
   const favoriteGoods = useMemo(() => ownedGoods.filter((item) => item.favorite).slice(0, 4), [ownedGoods]);
   const reservationGoods = useMemo(
-    () => goods.filter((item) => item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped' || item.status === 'arrived').slice(0, 4),
+    () => goods.filter((item) => item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped').slice(0, 4),
     [goods],
   );
   const exchangeGoods = useMemo(
@@ -134,7 +134,7 @@ export default function HomeScreen() {
         {unorganizedGoods.length ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/(tabs)/manage')}
+            onPress={() => router.push('/(tabs)/collection?mode=manage')}
             style={[styles.suggestionCard, { backgroundColor: colors.primary }]}
           >
             <View style={styles.suggestionIcon}>
@@ -173,7 +173,7 @@ export default function HomeScreen() {
             <SectionHeader
               title="交換可能グッズ"
               actionLabel="管理へ"
-              onPress={() => router.push('/(tabs)/manage')}
+              onPress={() => router.push('/(tabs)/collection?mode=manage')}
             />
             <View style={styles.tileGrid}>
               {exchangeGoods.map((item) => (
@@ -191,7 +191,7 @@ export default function HomeScreen() {
 
         {reservationGoods.length ? (
           <>
-            <SectionHeader title="予約・到着チェック" actionLabel="イベントへ" onPress={() => router.push('/(tabs)/scan?mode=event')} />
+            <SectionHeader title="予約・到着待ち" actionLabel="予定へ" onPress={() => router.push('/(tabs)/schedule')} />
             <View style={styles.statusList}>
               {reservationGoods.map((item) => (
                 <View key={`reservation-${item.id}`} style={[styles.statusListRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -241,7 +241,7 @@ export default function HomeScreen() {
         <SectionHeader
           title="最近追加したグッズ"
           actionLabel="管理へ"
-          onPress={() => router.push('/(tabs)/manage')}
+          onPress={() => router.push('/(tabs)/collection?mode=manage')}
         />
         {recentGoods.length ? (
           <View style={styles.tileGrid}>

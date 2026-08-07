@@ -8,6 +8,7 @@ import { GoodsImageField } from './GoodsImageField';
 
 type Props = {
   item: Goods;
+  source?: 'manage' | 'schedule' | 'scan';
   onCancel: () => void;
   onSave: (input: GoodsInput) => Promise<void>;
 };
@@ -17,12 +18,20 @@ const statuses: Array<[GoodsStatus, string]> = [
   ['reserved', '予約済み'],
   ['ordered', '発送済み'],
   ['shipped', '到着待ち'],
-  ['arrived', '到着'],
   ['wanted', '欲しい'],
   ['unorganized', '未整理'],
 ];
 
-export function GoodsEditForm({ item, onCancel, onSave }: Props) {
+const sourceStatusMap: Record<NonNullable<Props['source']>, GoodsStatus[]> = {
+  manage: ['owned', 'reserved', 'ordered', 'shipped', 'wanted', 'unorganized'],
+  schedule: ['reserved', 'ordered', 'shipped', 'wanted'],
+  scan: ['owned', 'reserved', 'unorganized'],
+};
+
+const collectionGoalOptions = ['推しだけ収集', '全種コンプ', '無限回収', '各1保管', '交換優先'];
+const tagOptions = ['等身', 'ミニキャラ', 'ライブ', '特典', '開封済み', '未開封'];
+
+export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Props) {
   const { colors } = useAppTheme();
   const [janCode, setJanCode] = useState(item.janCode ?? '');
   const [boxName, setBoxName] = useState(item.boxName);
@@ -72,6 +81,14 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
   }, [item]);
 
   const disabled = !boxName.trim() || saving;
+  const visibleStatuses = statuses.filter(([value]) => sourceStatusMap[source].includes(value));
+  const tagsList = tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+
+  const toggleTag = (tag: string) => {
+    const exists = tagsList.includes(tag);
+    const nextTags = exists ? tagsList.filter((value) => value !== tag) : [...tagsList, tag];
+    setTags(nextTags.join(', '));
+  };
 
   const save = async () => {
     if (disabled) return;
@@ -158,6 +175,19 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
 
       <Pressable
         accessibilityRole="checkbox"
+        accessibilityState={{ checked: favorite }}
+        onPress={() => setFavorite((current) => !current)}
+        style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+      >
+        <Ionicons color={favorite ? colors.primary : colors.muted} name={favorite ? 'star' : 'star-outline'} size={22} />
+        <View style={styles.checkTextBlock}>
+          <Text style={[styles.checkTitle, { color: colors.text }]}>お気に入り</Text>
+          <Text style={[styles.checkHelp, { color: colors.muted }]}>よく見返したいグッズとしてホームや検索で見つけやすくします。</Text>
+        </View>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="checkbox"
         accessibilityState={{ checked: isRandom }}
         onPress={() => setIsRandom((current) => !current)}
         style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
@@ -193,20 +223,23 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
           <Text style={[styles.label, { color: colors.muted }]}>保存用</Text>
           <TextInput value={keepQuantity} onChangeText={setKeepQuantity} keyboardType="number-pad" placeholder="例: 1" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
         </View>
-        <View style={styles.flexItem}>
-          <Text style={[styles.label, { color: colors.muted }]}>使用中</Text>
-          <TextInput value={inUseQuantity} onChangeText={setInUseQuantity} keyboardType="number-pad" placeholder="例: 24" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
-        </View>
       </View>
 
-      <Text style={[styles.label, { color: colors.muted }]}>保管場所</Text>
-      <TextInput value={storageLocation} onChangeText={setStorageLocation} placeholder="例: ケースB > 2段目 > ポケット3" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
-
-      <Text style={[styles.label, { color: colors.muted }]}>使用先</Text>
-      <TextInput value={usageLocation} onChangeText={setUsageLocation} placeholder="例: 痛バッグ / 祭壇 / ディスプレイ棚" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
-
       <Text style={[styles.label, { color: colors.muted }]}>収集方針</Text>
-      <TextInput value={collectionGoal} onChangeText={setCollectionGoal} placeholder="例: 推しだけ収集 / 無限回収 / 全種コンプ" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+      <View style={styles.chipWrap}>
+        {collectionGoalOptions.map((goal) => {
+          const active = collectionGoal === goal;
+          return (
+            <Pressable
+              key={goal}
+              onPress={() => setCollectionGoal(active ? '' : goal)}
+              style={[styles.choiceChip, { borderColor: colors.border, backgroundColor: active ? colors.text : colors.elevated }]}
+            >
+              <Text style={[styles.choiceChipText, { color: active ? colors.background : colors.text }]}>{goal}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       <View style={styles.twoColumnRow}>
         <View style={styles.flexItem}>
@@ -220,23 +253,40 @@ export function GoodsEditForm({ item, onCancel, onSave }: Props) {
       </View>
 
       <Text style={[styles.label, { color: colors.muted }]}>タグ</Text>
-      <TextInput value={tags} onChangeText={setTags} placeholder="例: 等身, ライブ, お気に入り" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+      <View style={styles.chipWrap}>
+        {tagOptions.map((tag) => {
+          const active = tagsList.includes(tag);
+          return (
+            <Pressable
+              key={tag}
+              onPress={() => toggleTag(tag)}
+              style={[styles.choiceChip, { borderColor: colors.border, backgroundColor: active ? colors.primary : colors.elevated }]}
+            >
+              <Text style={[styles.choiceChipText, { color: active ? '#ffffff' : colors.text }]}>{tag}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <TextInput value={tags} onChangeText={setTags} placeholder="自由入力はカンマ区切り" placeholderTextColor={colors.muted} style={[styles.input, styles.compactInput, { backgroundColor: colors.input, color: colors.text }]} />
 
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: favorite }}
-        onPress={() => setFavorite((current) => !current)}
-        style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
-      >
-        <Ionicons color={favorite ? colors.primary : colors.muted} name={favorite ? 'star' : 'star-outline'} size={22} />
-        <View style={styles.checkTextBlock}>
-          <Text style={[styles.checkTitle, { color: colors.text }]}>お気に入り</Text>
-          <Text style={[styles.checkHelp, { color: colors.muted }]}>特に好きなグッズとしてホームや検索で見つけやすくします。</Text>
+      <View style={[styles.memoBlock, { borderColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>メモ・保管</Text>
+        <View style={styles.twoColumnRow}>
+          <View style={styles.flexItem}>
+            <Text style={[styles.label, { color: colors.muted }]}>使用中</Text>
+            <TextInput value={inUseQuantity} onChangeText={setInUseQuantity} keyboardType="number-pad" placeholder="例: 1" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+          </View>
         </View>
-      </Pressable>
+
+        <Text style={[styles.label, { color: colors.muted }]}>保管場所</Text>
+        <TextInput value={storageLocation} onChangeText={setStorageLocation} placeholder="例: ケースB > 2段目 > ポケット3" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+
+        <Text style={[styles.label, { color: colors.muted }]}>使用先</Text>
+        <TextInput value={usageLocation} onChangeText={setUsageLocation} placeholder="例: 痛バッグ / 祭壇 / ディスプレイ棚" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+      </View>
 
       <View style={styles.statusRow}>
-        {statuses.map(([value, label]) => (
+        {visibleStatuses.map(([value, label]) => (
           <Pressable
             key={value}
             onPress={() => setStatus(value)}
@@ -283,6 +333,24 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingHorizontal: 12,
   },
+  compactInput: { marginTop: 8 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choiceChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  choiceChipText: { fontSize: 12, fontWeight: '900' },
+  memoBlock: {
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 16,
+    padding: 12,
+  },
+  sectionTitle: { fontSize: 15, fontWeight: '900' },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   statusButton: {
     alignItems: 'center',
