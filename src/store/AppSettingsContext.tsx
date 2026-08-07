@@ -4,6 +4,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useSt
 type AppSettings = {
   exchangeEnabled: boolean;
   groupRandomGoods: boolean;
+  utilityTabs: string[];
 };
 
 type AppSettingsContextValue = {
@@ -16,6 +17,7 @@ const STORAGE_KEY = 'oshilist.appSettings.v1';
 const defaultSettings: AppSettings = {
   exchangeEnabled: false,
   groupRandomGoods: false,
+  utilityTabs: ['collection', 'schedule'],
 };
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
@@ -23,7 +25,11 @@ const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 function readStoredSettings(stored: string): AppSettings {
   try {
     const parsed = JSON.parse(stored) as Partial<AppSettings>;
-    return { ...defaultSettings, ...parsed };
+    return {
+      ...defaultSettings,
+      ...parsed,
+      utilityTabs: Array.isArray(parsed.utilityTabs) && parsed.utilityTabs.length === 2 ? parsed.utilityTabs : defaultSettings.utilityTabs,
+    };
   } catch {
     return defaultSettings;
   }

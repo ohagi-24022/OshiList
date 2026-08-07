@@ -35,6 +35,9 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
   const insets = useSafeAreaInsets();
   const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
   const listRef = useRef<FlatList<Goods>>(null);
+  const headerTranslateY = useRef(new Animated.Value(0)).current;
+  const headerHiddenRef = useRef(false);
+  const lastScrollYRef = useRef(0);
   const detailTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const detailTranslateX = useRef(new Animated.Value(0)).current;
   const [query, setQuery] = useState('');
@@ -46,6 +49,7 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
   const [bulkSeriesName, setBulkSeriesName] = useState('');
   const [bulkCharacterName, setBulkCharacterName] = useState('');
   const [bulkStorageLocation, setBulkStorageLocation] = useState('');
+  const [headerHeight, setHeaderHeight] = useState(174);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -198,21 +202,48 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
 
   const Root = embedded ? View : SafeAreaView;
 
+  const setHeaderHidden = (hidden: boolean) => {
+    if (headerHiddenRef.current === hidden) return;
+    headerHiddenRef.current = hidden;
+    Animated.timing(headerTranslateY, {
+      duration: 180,
+      toValue: hidden ? -headerHeight : 0,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleListScroll = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = Math.max(0, event.nativeEvent.contentOffset.y);
+    const delta = y - lastScrollYRef.current;
+    lastScrollYRef.current = y;
+    if (y < 24) {
+      setHeaderHidden(false);
+      return;
+    }
+    if (delta > 10 && y > headerHeight * 0.45) {
+      setHeaderHidden(true);
+    } else if (delta < -10) {
+      setHeaderHidden(false);
+    }
+  };
+
   return (
     <Root style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View
+      <Animated.View
+        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
         style={[
           styles.header,
           {
             backgroundColor: colors.background,
             borderBottomColor: colors.border,
             paddingTop: embedded ? insets.top + 10 : 8,
+            transform: [{ translateY: headerTranslateY }],
           },
         ]}
       >
         <View style={styles.titleRow}>
           <View>
-            <Text style={[styles.title, { color: colors.text }]}>コレクション</Text>
+            <Text style={[styles.title, { color: colors.text }]}>管理</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
               {loading ? '読み込み中' : selectionMode ? `${selectedCount}件選択中` : `管理中 ${collectionGoodsCount}種類`}
             </Text>
@@ -281,11 +312,11 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
             </Pressable>
           </View>
         ) : null}
-      </View>
+      </Animated.View>
 
       <FlatList
         ref={listRef}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingTop: headerHeight + 18 }]}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => {
@@ -315,6 +346,8 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
             </View>
           );
         }}
+        onScroll={handleListScroll}
+        scrollEventThrottle={16}
         ListEmptyComponent={
           <View style={[styles.empty, { borderColor: colors.border }]}>
             <Ionicons color={colors.muted} name="file-tray-outline" size={40} />
@@ -477,13 +510,18 @@ const styles = StyleSheet.create({
   header: {
     borderBottomWidth: 1,
     elevation: 8,
+    left: 0,
     paddingBottom: 12,
     paddingHorizontal: 18,
     paddingTop: 8,
+    position: 'absolute',
+    right: 0,
     shadowColor: '#000000',
     shadowOffset: { height: 4, width: 0 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
+    top: 0,
+    zIndex: 10,
   },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   headerActions: { alignItems: 'center', flexDirection: 'row', gap: 8 },

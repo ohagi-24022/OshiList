@@ -17,6 +17,7 @@ type Props = {
   initialImageUrl?: string | null;
   initialIsRandom?: boolean;
   initialStatus?: GoodsStatus;
+  initialEventId?: string;
   allowedStatuses?: GoodsStatus[];
   onSubmit: (input: GoodsInput) => Promise<void>;
 };
@@ -43,6 +44,7 @@ export function ManualGoodsForm({
   initialImageUrl = null,
   initialIsRandom = false,
   initialStatus = 'owned',
+  initialEventId = '',
   allowedStatuses,
   onSubmit,
 }: Props) {
@@ -105,6 +107,7 @@ export function ManualGoodsForm({
         imageUrl: imageUrl.trim() || null,
         isRandom,
         status,
+        eventId: initialEventId,
       });
       setBoxName('');
       setSeriesName('');

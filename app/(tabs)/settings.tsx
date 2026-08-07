@@ -9,6 +9,14 @@ import { useGoods } from '../../src/store/GoodsContext';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 
+const editableTabs = [
+  { id: 'collection', label: 'コレクション', icon: 'albums-outline' },
+  { id: 'schedule', label: '予定', icon: 'calendar-outline' },
+  { id: 'manage', label: '管理', icon: 'create-outline' },
+  { id: 'mypage', label: 'マイページ', icon: 'person-circle-outline' },
+  { id: 'event', label: 'イベント', icon: 'sparkles-outline' },
+] as const;
+
 export default function SettingsScreen() {
   const { colors, presets, setPreset, customPresets, deleteCustomPreset } = useAppTheme();
   const { settings, updateSettings } = useAppSettings();
@@ -27,6 +35,15 @@ export default function SettingsScreen() {
         onPress: () => deleteCustomPreset(preset.id),
       },
     ]);
+  };
+  const toggleUtilityTab = (id: string) => {
+    const current = settings.utilityTabs;
+    if (current.includes(id)) {
+      if (current.length <= 2) return;
+      updateSettings({ utilityTabs: current.filter((value) => value !== id).slice(0, 2) });
+      return;
+    }
+    updateSettings({ utilityTabs: [...current, id].slice(-2) });
   };
 
   return (
@@ -182,6 +199,26 @@ export default function SettingsScreen() {
         </View>
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.panelTitle, { color: colors.text }]}>タブ編集</Text>
+          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・登録・設定は固定です。残り2つのタブを選択できます。</Text>
+          <View style={styles.tabOptionGrid}>
+            {editableTabs.map((tab) => {
+              const selected = settings.utilityTabs.includes(tab.id);
+              return (
+                <Pressable
+                  key={tab.id}
+                  onPress={() => toggleUtilityTab(tab.id)}
+                  style={[styles.tabOption, { backgroundColor: selected ? colors.text : colors.elevated, borderColor: colors.border }]}
+                >
+                  <Ionicons color={selected ? colors.background : colors.primary} name={tab.icon} size={18} />
+                  <Text style={[styles.tabOptionText, { color: selected ? colors.background : colors.text }]}>{tab.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>データ管理</Text>
           <View style={styles.dataRow}>
             <Ionicons color={colors.muted} name="phone-portrait-outline" size={20} />
@@ -280,6 +317,18 @@ const styles = StyleSheet.create({
     minHeight: 74,
     padding: 12,
   },
+  tabOptionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tabOption: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: '47%',
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 42,
+    paddingHorizontal: 10,
+  },
+  tabOptionText: { fontSize: 12, fontWeight: '900' },
   switchTrack: {
     borderRadius: 999,
     height: 30,

@@ -1,10 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 
+import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 
 export default function TabsLayout() {
   const { colors } = useAppTheme();
+  const { settings } = useAppSettings();
+  const visibleTabs = new Set(settings.utilityTabs);
 
   return (
     <Tabs
@@ -32,6 +35,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="collection"
         options={{
+          href: visibleTabs.has('collection') ? undefined : null,
           title: 'コレクション',
           tabBarIcon: ({ color, size }) => <Ionicons color={color} name="albums-outline" size={size} />,
         }}
@@ -39,14 +43,33 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="manage"
         options={{
-          href: null,
+          href: visibleTabs.has('manage') ? undefined : null,
+          title: '管理',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="create-outline" size={size} />,
         }}
       />
       <Tabs.Screen
         name="schedule"
         options={{
+          href: visibleTabs.has('schedule') ? undefined : null,
           title: '予定',
           tabBarIcon: ({ color, size }) => <Ionicons color={color} name="calendar-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="event"
+        options={{
+          href: visibleTabs.has('event') ? undefined : null,
+          title: 'イベント',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="sparkles-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="mypage-tab"
+        options={{
+          href: visibleTabs.has('mypage') ? undefined : null,
+          title: 'マイページ',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="person-circle-outline" size={size} />,
         }}
       />
       <Tabs.Screen

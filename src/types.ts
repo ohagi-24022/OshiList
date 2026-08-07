@@ -23,6 +23,7 @@ export type Goods = {
   pickupDate: string;
   tags: string;
   favorite: boolean;
+  eventId: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,6 +50,15 @@ export type GoodsInput = {
   pickupDate?: string;
   tags?: string;
   favorite?: boolean;
+  eventId?: string;
+};
+
+export type EventPlan = {
+  id: string;
+  name: string;
+  date: string;
+  venue: string;
+  memo: string;
 };
 
 export type ProductLookupResult = {

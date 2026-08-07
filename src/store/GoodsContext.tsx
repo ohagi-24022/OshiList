@@ -47,6 +47,7 @@ function normalizedGoodsInput(input: GoodsInput) {
     pickupDate: input.pickupDate?.trim() || '',
     tags: input.tags?.trim() || '',
     favorite: input.favorite ?? false,
+    eventId: input.eventId?.trim() || '',
   };
 }
 
@@ -75,6 +76,7 @@ function mapGoods(row: Record<string, unknown>): Goods {
     pickupDate: String(row.pickup_date ?? ''),
     tags: String(row.tags ?? ''),
     favorite: Number(row.favorite ?? 0) === 1,
+    eventId: String(row.event_id ?? ''),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -105,6 +107,7 @@ async function migrate() {
       pickup_date TEXT NOT NULL DEFAULT '',
       tags TEXT NOT NULL DEFAULT '',
       favorite INTEGER NOT NULL DEFAULT 0,
+      event_id TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -135,6 +138,7 @@ async function migrate() {
     "ALTER TABLE goods ADD COLUMN pickup_date TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE goods ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
     'ALTER TABLE goods ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE goods ADD COLUMN event_id TEXT NOT NULL DEFAULT ''",
   ];
   for (const statement of migrations) {
     try {
@@ -174,6 +178,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
            AND variant_name = ?
            AND is_random = ?
            AND status = ?
+           AND event_id = ?
          ORDER BY id DESC
          LIMIT 1`,
         normalized.janCode,
@@ -182,6 +187,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.variantName,
         normalized.isRandom ? 1 : 0,
         normalized.status,
+        normalized.eventId,
       );
 
       if (existing) {
@@ -206,9 +212,9 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         `INSERT INTO goods (
            jan_code, box_name, series_name, character_name, variant_name, quantity, image_url, is_random, status,
            target_quantity, keep_quantity, in_use_quantity, exchange_quantity, storage_location, usage_location,
-           collection_goal, release_date, reservation_deadline, pickup_date, tags, favorite, updated_at
+           collection_goal, release_date, reservation_deadline, pickup_date, tags, favorite, event_id, updated_at
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         normalized.janCode,
         normalized.boxName,
         normalized.seriesName,
@@ -230,6 +236,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.pickupDate,
         normalized.tags,
         normalized.favorite ? 1 : 0,
+        normalized.eventId,
       );
       await refresh();
     },
@@ -284,6 +291,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
              pickup_date = ?,
              tags = ?,
              favorite = ?,
+             event_id = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         normalized.janCode,
@@ -307,6 +315,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.pickupDate,
         normalized.tags,
         normalized.favorite ? 1 : 0,
+        normalized.eventId,
         id,
       );
       if (previous?.image_url && previous.image_url !== normalized.imageUrl) {

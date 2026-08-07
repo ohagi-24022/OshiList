@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
@@ -72,10 +72,12 @@ function compareSchedule(a: Goods, b: Goods) {
 
 export default function ScheduleScreen() {
   const { colors } = useAppTheme();
-  const { goods, updateGoods, updateQuantity } = useGoods();
+  const { goods, removeGoods, updateGoods, updateQuantity } = useGoods();
   const [selectedStatus, setSelectedStatus] = useState<GoodsStatus | 'all'>('all');
   const [selected, setSelected] = useState<Goods | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
+  const [calendarTouchStart, setCalendarTouchStart] = useState<{ x: number; y: number } | null>(null);
 
   const scheduleGoods = useMemo(
     () =>
@@ -97,6 +99,7 @@ export default function ScheduleScreen() {
   );
   const yearDays = useMemo(() => getYearDays(), []);
   const calendarMonths = useMemo(() => groupCalendarDays(yearDays), [yearDays]);
+  const currentMonth = calendarMonths[currentMonthIndex];
   const groupedSchedule = useMemo(() => groupByScheduleDate(scheduleGoods), [scheduleGoods]);
   const scheduleDateCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -109,6 +112,18 @@ export default function ScheduleScreen() {
 
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
+  };
+  const rememberCalendarTouch = (event: GestureResponderEvent) => {
+    setCalendarTouchStart({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
+  };
+  const finishCalendarTouch = (event: GestureResponderEvent) => {
+    if (!calendarTouchStart) return;
+    const dx = event.nativeEvent.pageX - calendarTouchStart.x;
+    const dy = event.nativeEvent.pageY - calendarTouchStart.y;
+    setCalendarTouchStart(null);
+    if (dx > 80 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      setViewMode('list');
+    }
   };
 
   return (
@@ -167,12 +182,13 @@ export default function ScheduleScreen() {
                 onIncrease={() => updateQuantity(item.id, 1)}
                 onMarkOwned={() => markOwned(item)}
                 onPress={() => setSelected(item)}
+                onRemove={() => removeGoods(item.id)}
                 onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
               />
             ))}
           </>
         ) : (
-          <>
+          <View onTouchEnd={finishCalendarTouch} onTouchStart={rememberCalendarTouch}>
             <Pressable
               onPress={() => setViewMode('list')}
               style={[styles.backToListButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -185,15 +201,31 @@ export default function ScheduleScreen() {
               <View style={styles.calendarHeader}>
                 <View>
                   <Text style={[styles.calendarTitle, { color: colors.text }]}>今後365日</Text>
-                  <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
+                  <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>前月/次月で移動。右スワイプで一覧へ戻れます。</Text>
                 </View>
                 <Ionicons color={colors.primary} name="calendar-number-outline" size={24} />
               </View>
-              {calendarMonths.map((month) => (
-                <View key={month.key} style={styles.monthBlock}>
-                  <Text style={[styles.monthTitle, { color: colors.text }]}>{month.label}</Text>
+              {currentMonth ? (
+                <View style={styles.monthBlock}>
+                  <View style={styles.monthNav}>
+                    <Pressable
+                      disabled={currentMonthIndex <= 0}
+                      onPress={() => setCurrentMonthIndex((index) => Math.max(0, index - 1))}
+                      style={[styles.monthNavButton, { borderColor: colors.border, opacity: currentMonthIndex <= 0 ? 0.4 : 1 }]}
+                    >
+                      <Ionicons color={colors.text} name="chevron-back" size={18} />
+                    </Pressable>
+                    <Text style={[styles.monthTitle, { color: colors.text }]}>{currentMonth.label}</Text>
+                    <Pressable
+                      disabled={currentMonthIndex >= calendarMonths.length - 1}
+                      onPress={() => setCurrentMonthIndex((index) => Math.min(calendarMonths.length - 1, index + 1))}
+                      style={[styles.monthNavButton, { borderColor: colors.border, opacity: currentMonthIndex >= calendarMonths.length - 1 ? 0.4 : 1 }]}
+                    >
+                      <Ionicons color={colors.text} name="chevron-forward" size={18} />
+                    </Pressable>
+                  </View>
                   <View style={styles.monthGrid}>
-                    {month.days.map((day) => {
+                    {currentMonth.days.map((day) => {
                       const count = scheduleDateCounts.get(day.key) ?? 0;
                       return (
                         <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
@@ -205,7 +237,7 @@ export default function ScheduleScreen() {
                     })}
                   </View>
                 </View>
-              ))}
+              ) : null}
             </View>
 
             {groupedSchedule.map(([dateLabel, items]) => (
@@ -223,12 +255,13 @@ export default function ScheduleScreen() {
                     onIncrease={() => updateQuantity(item.id, 1)}
                     onMarkOwned={() => markOwned(item)}
                     onPress={() => setSelected(item)}
+                    onRemove={() => removeGoods(item.id)}
                     onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
                   />
                 ))}
               </View>
             ))}
-          </>
+          </View>
         )}
         {!scheduleGoods.length ? (
           <View style={[styles.empty, { borderColor: colors.border }]}>
@@ -287,6 +320,7 @@ function ScheduleItem({
   onIncrease,
   onMarkOwned,
   onPress,
+  onRemove,
   onToggleFavorite,
 }: {
   item: Goods;
@@ -294,6 +328,7 @@ function ScheduleItem({
   onIncrease: () => void;
   onMarkOwned: () => void;
   onPress: () => void;
+  onRemove: () => void;
   onToggleFavorite: () => void;
 }) {
   const { colors } = useAppTheme();
@@ -314,6 +349,7 @@ function ScheduleItem({
         onIncrease={onIncrease}
         onToggleFavorite={onToggleFavorite}
         onPress={onPress}
+        onRemove={onRemove}
       />
     </View>
   );
@@ -361,7 +397,9 @@ const styles = StyleSheet.create({
   calendarTitle: { fontSize: 17, fontWeight: '900' },
   calendarSubtitle: { fontSize: 12, marginTop: 2 },
   monthBlock: { marginTop: 14 },
-  monthTitle: { fontSize: 14, fontWeight: '900', marginBottom: 8 },
+  monthNav: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  monthNavButton: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 36, justifyContent: 'center', width: 36 },
+  monthTitle: { fontSize: 15, fontWeight: '900' },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   dayCell: { alignItems: 'center', borderRadius: 8, minHeight: 58, justifyContent: 'center', paddingVertical: 6, width: 42 },
   weekdayText: { fontSize: 10, fontWeight: '900' },
