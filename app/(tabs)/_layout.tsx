@@ -52,8 +52,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="scan"
         options={{
-          title: 'スキャン',
-          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="barcode-outline" size={size} />,
+          title: '登録',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="add-circle-outline" size={size} />,
         }}
       />
       <Tabs.Screen

@@ -49,12 +49,14 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return goods.filter((item) => {
+      if (item.status !== 'owned' && item.status !== 'unorganized') return false;
       if (unorganizedOnly && item.status !== 'unorganized') return false;
       const target = [item.boxName, item.seriesName, item.characterName, item.variantName, item.janCode, item.storageLocation, item.usageLocation, item.tags].filter(Boolean).join(' ');
       return !normalized || target.toLowerCase().includes(normalized);
     });
   }, [goods, query, unorganizedOnly]);
 
+  const collectionGoodsCount = useMemo(() => goods.filter((item) => item.status === 'owned' || item.status === 'unorganized').length, [goods]);
   const unorganizedCount = useMemo(() => goods.filter((item) => item.status === 'unorganized').length, [goods]);
 
   const selectedItem = selected ? goods.find((item) => item.id === selected.id) ?? selected : null;
@@ -202,7 +204,7 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
           <View>
             <Text style={[styles.title, { color: colors.text }]}>管理</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : selectionMode ? `${selectedCount}件選択中` : `登録済み ${goods.length}種類`}
+              {loading ? '読み込み中' : selectionMode ? `${selectedCount}件選択中` : `コレクション管理 ${collectionGoodsCount}種類`}
             </Text>
           </View>
           <View style={styles.headerActions}>

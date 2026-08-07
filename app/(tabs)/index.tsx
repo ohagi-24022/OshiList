@@ -23,7 +23,7 @@ export default function HomeScreen() {
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const oshiGoods = useMemo(() => ownedGoods.filter((item) => isOshiGoods(item, profile)), [ownedGoods, profile]);
-  const recentGoods = useMemo(() => [...goods].sort((a, b) => b.id - a.id).slice(0, 4), [goods]);
+  const recentGoods = useMemo(() => [...ownedGoods].sort((a, b) => b.id - a.id).slice(0, 4), [ownedGoods]);
   const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
   const favoriteGoods = useMemo(() => ownedGoods.filter((item) => item.favorite).slice(0, 4), [ownedGoods]);
   const reservationGoods = useMemo(

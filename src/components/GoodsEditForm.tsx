@@ -23,7 +23,7 @@ const statuses: Array<[GoodsStatus, string]> = [
 ];
 
 const sourceStatusMap: Record<NonNullable<Props['source']>, GoodsStatus[]> = {
-  manage: ['owned', 'reserved', 'ordered', 'shipped', 'wanted', 'unorganized'],
+  manage: ['owned', 'unorganized'],
   schedule: ['reserved', 'ordered', 'shipped', 'wanted'],
   scan: ['owned', 'reserved', 'unorganized'],
 };
@@ -240,6 +240,7 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
           );
         })}
       </View>
+      <TextInput value={collectionGoal} onChangeText={setCollectionGoal} placeholder="自由入力" placeholderTextColor={colors.muted} style={[styles.input, styles.compactInput, { backgroundColor: colors.input, color: colors.text }]} />
 
       <View style={styles.twoColumnRow}>
         <View style={styles.flexItem}>

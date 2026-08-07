@@ -17,12 +17,16 @@ type Props = {
   initialImageUrl?: string | null;
   initialIsRandom?: boolean;
   initialStatus?: GoodsStatus;
+  allowedStatuses?: GoodsStatus[];
   onSubmit: (input: GoodsInput) => Promise<void>;
 };
 
 const statuses: Array<[GoodsStatus, string]> = [
   ['owned', '所持'],
   ['reserved', '予約済み'],
+  ['ordered', '発送済み'],
+  ['shipped', '到着待ち'],
+  ['wanted', '欲しい'],
   ['unorganized', '未整理'],
 ];
 
@@ -39,6 +43,7 @@ export function ManualGoodsForm({
   initialImageUrl = null,
   initialIsRandom = false,
   initialStatus = 'owned',
+  allowedStatuses,
   onSubmit,
 }: Props) {
   const { colors } = useAppTheme();
@@ -70,6 +75,7 @@ export function ManualGoodsForm({
 
   const disabled = !boxName.trim() || saving;
   const canSavePreset = !!seriesName.trim() || !!characterName.trim();
+  const visibleStatuses = statuses.filter(([value]) => (allowedStatuses ?? ['owned', 'unorganized']).includes(value));
 
   const savePreset = async () => {
     if (!canSavePreset) return;
@@ -227,7 +233,7 @@ export function ManualGoodsForm({
       />
 
       <View style={styles.statusRow}>
-        {statuses.map(([value, label]) => (
+        {visibleStatuses.map(([value, label]) => (
           <Pressable
             key={value}
             onPress={() => setStatus(value)}

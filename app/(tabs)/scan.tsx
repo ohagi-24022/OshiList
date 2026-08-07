@@ -30,7 +30,8 @@ import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, PhotoInferResult, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
-type ScanMode = 'barcode' | 'check' | 'opening' | 'event' | 'receipt' | 'photo' | 'manual';
+type ScanMode = 'barcode' | 'receipt' | 'photo' | 'manual' | 'opening' | 'plan' | 'check' | 'event';
+type RegistrationFlow = 'owned' | 'planned';
 type ReceiptSource = 'camera' | 'library';
 type ReceiptCandidateChoice = {
   boxName: string;
@@ -48,6 +49,7 @@ export default function ScanScreen() {
   const isFocused = useIsFocused();
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<ScanMode>('barcode');
+  const [registrationFlow, setRegistrationFlow] = useState<RegistrationFlow>('owned');
   const [torch, setTorch] = useState(false);
   const [manualJan, setManualJan] = useState('');
   const [scanning, setScanning] = useState(true);
@@ -67,16 +69,27 @@ export default function ScanScreen() {
   useEffect(() => {
     if (
       params.mode === 'barcode' ||
-      params.mode === 'check' ||
-      params.mode === 'opening' ||
-      params.mode === 'event' ||
       params.mode === 'receipt' ||
       params.mode === 'photo' ||
-      params.mode === 'manual'
+      params.mode === 'manual' ||
+      params.mode === 'opening' ||
+      params.mode === 'plan' ||
+      params.mode === 'check' ||
+      params.mode === 'event'
     ) {
       setMode(params.mode);
+      setRegistrationFlow(params.mode === 'plan' || params.mode === 'check' || params.mode === 'event' ? 'planned' : 'owned');
     }
   }, [params.mode]);
+
+  const ownedModes: ScanMode[] = ['barcode', 'receipt', 'photo', 'manual', 'opening'];
+  const plannedModes: ScanMode[] = ['plan', 'check', 'event'];
+  const visibleModes = registrationFlow === 'owned' ? ownedModes : plannedModes;
+
+  const switchRegistrationFlow = (nextFlow: RegistrationFlow) => {
+    setRegistrationFlow(nextFlow);
+    setMode(nextFlow === 'owned' ? 'barcode' : 'plan');
+  };
 
   const resetScanLock = () => {
     scanLockRef.current = false;
@@ -233,14 +246,31 @@ export default function ScanScreen() {
       <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
         <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.titleBlock}>
-            <Text style={[styles.title, { color: colors.text }]}>スキャン登録</Text>
+            <Text style={[styles.title, { color: colors.text }]}>登録</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              JANコードまたは領収書から、登録候補を探してコレクションへ追加できます。
+              所持コレクションへの追加と、予約・欲しい物の登録を分けて管理します。
             </Text>
           </View>
 
+          <View style={[styles.flowSegment, { backgroundColor: colors.input }]}>
+            <Pressable
+              onPress={() => switchRegistrationFlow('owned')}
+              style={[styles.flowButton, registrationFlow === 'owned' && { backgroundColor: colors.surface }]}
+            >
+              <Ionicons color={registrationFlow === 'owned' ? colors.primary : colors.muted} name="albums-outline" size={19} />
+              <Text style={[styles.flowText, { color: registrationFlow === 'owned' ? colors.text : colors.muted }]}>所持に追加</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => switchRegistrationFlow('planned')}
+              style={[styles.flowButton, registrationFlow === 'planned' && { backgroundColor: colors.surface }]}
+            >
+              <Ionicons color={registrationFlow === 'planned' ? colors.primary : colors.muted} name="calendar-outline" size={19} />
+              <Text style={[styles.flowText, { color: registrationFlow === 'planned' ? colors.text : colors.muted }]}>予定・欲しい</Text>
+            </Pressable>
+          </View>
+
           <View style={[styles.segment, { backgroundColor: colors.input }]}>
-            {(['barcode', 'check', 'opening', 'event', 'receipt', 'photo', 'manual'] as ScanMode[]).map((value) => (
+            {visibleModes.map((value) => (
               <Pressable
                 key={value}
                 onPress={() => setMode(value)}
@@ -251,34 +281,38 @@ export default function ScanScreen() {
                   name={
                     value === 'barcode'
                       ? 'barcode-outline'
+                      : value === 'receipt'
+                        ? 'receipt-outline'
+                        : value === 'photo'
+                          ? 'camera-outline'
+                          : value === 'manual'
+                            ? 'create-outline'
+                            : value === 'opening'
+                              ? 'cube-outline'
+                              : value === 'plan'
+                                ? 'calendar-outline'
                       : value === 'check'
                         ? 'shield-checkmark-outline'
-                        : value === 'opening'
-                          ? 'cube-outline'
-                          : value === 'event'
-                            ? 'sparkles-outline'
-                            : value === 'receipt'
-                              ? 'receipt-outline'
-                              : value === 'photo'
-                                ? 'camera-outline'
-                                : 'create-outline'
+                        : 'sparkles-outline'
                   }
                   size={18}
                 />
                 <Text style={[styles.segmentText, { color: mode === value ? colors.text : colors.muted }]}>
                   {value === 'barcode'
                     ? 'バーコード'
-                    : value === 'check'
-                      ? '買う前'
-                      : value === 'opening'
-                        ? '連続開封'
-                        : value === 'event'
-                          ? 'イベント'
-                          : value === 'receipt'
-                            ? '領収書'
-                            : value === 'photo'
-                              ? '写真登録α'
-                              : '手動登録'}
+                    : value === 'receipt'
+                      ? '領収書'
+                      : value === 'photo'
+                        ? '写真登録α'
+                        : value === 'manual'
+                          ? '手動登録'
+                          : value === 'opening'
+                            ? '連続開封'
+                            : value === 'plan'
+                              ? '予定登録'
+                              : value === 'check'
+                                ? '買う前'
+                                : 'イベント'}
                 </Text>
               </Pressable>
             ))}
@@ -364,6 +398,23 @@ export default function ScanScreen() {
                 )}
               </View>
             </>
+          ) : mode === 'plan' ? (
+            <View>
+              <View style={[styles.manualIntro, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                <Ionicons color={colors.primary} name="calendar-outline" size={22} />
+                <View style={styles.manualIntroText}>
+                  <Text style={[styles.manualIntroTitle, { color: colors.text }]}>予約・欲しい物を登録</Text>
+                  <Text style={[styles.manualIntroBody, { color: colors.muted }]}>
+                    まだ所持していないグッズを予定として登録します。コレクション一覧には表示せず、予定タブで管理します。
+                  </Text>
+                </View>
+              </View>
+              <ManualGoodsForm
+                initialStatus="wanted"
+                allowedStatuses={['wanted', 'reserved', 'ordered', 'shipped']}
+                onSubmit={addGoods}
+              />
+            </View>
           ) : mode === 'check' ? (
             <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.receiptIcon}>
@@ -542,7 +593,7 @@ export default function ScanScreen() {
                   </Text>
                 </View>
               </View>
-              <ManualGoodsForm initialJanCode={manualJan || null} onSubmit={addGoods} />
+              <ManualGoodsForm initialJanCode={manualJan || null} allowedStatuses={['owned', 'unorganized']} onSubmit={addGoods} />
             </View>
           )}
         </ScrollView>
@@ -654,6 +705,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                     initialSeriesName={seriesName}
                     initialImageUrl={result.imageUrl}
                     initialIsRandom={inferredIsRandom}
+                    allowedStatuses={['owned', 'unorganized']}
                     onSubmit={async (input) => {
                       await addGoods(input);
                       onClose();
@@ -954,6 +1006,7 @@ function PhotoInferModal({ result, imageUri, onClose }: { result: PhotoInferResu
                 initialImageUrl={imageUri}
                 initialIsRandom={result.isRandom}
                 initialStatus="unorganized"
+                allowedStatuses={['owned', 'unorganized']}
                 onSubmit={async (input) => {
                   await addGoods({
                     ...input,
@@ -1008,6 +1061,17 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 3 },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 13, lineHeight: 19 },
+  flowSegment: { borderRadius: 8, flexDirection: 'row', gap: 4, padding: 4 },
+  flowButton: {
+    alignItems: 'center',
+    borderRadius: 7,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 46,
+    justifyContent: 'center',
+  },
+  flowText: { fontSize: 14, fontWeight: '900' },
   segment: { borderRadius: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4 },
   segmentButton: {
     alignItems: 'center',
