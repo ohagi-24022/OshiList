@@ -63,6 +63,7 @@ export default function ScheduleScreen() {
   const { goods, updateGoods, updateQuantity } = useGoods();
   const [selectedStatus, setSelectedStatus] = useState<GoodsStatus | 'all'>('all');
   const [selected, setSelected] = useState<Goods | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   const scheduleGoods = useMemo(
     () =>
@@ -102,8 +103,10 @@ export default function ScheduleScreen() {
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.titleRow}>
           <View>
-            <Text style={[styles.title, { color: colors.text }]}>予定</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>予約・発送・到着待ちをまとめて確認</Text>
+            <Text style={[styles.title, { color: colors.text }]}>{viewMode === 'calendar' ? 'カレンダー' : '予定'}</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>
+              {viewMode === 'calendar' ? '日付から予約・到着予定を確認' : '予約・発送・到着待ちをまとめて確認'}
+            </Text>
           </View>
           <View style={[styles.calendarBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons color={colors.primary} name="calendar-outline" size={18} />
@@ -111,69 +114,104 @@ export default function ScheduleScreen() {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statusTabs}>
-          <StatusChip label="すべて" active={selectedStatus === 'all'} onPress={() => setSelectedStatus('all')} />
-          {scheduleStatuses.map((status) => (
-            <StatusChip
-              key={status}
-              label={`${goodsStatusLabels[status]} ${statusCounts[status] ?? 0}`}
-              active={selectedStatus === status}
-              onPress={() => setSelectedStatus(status)}
-            />
-          ))}
-        </ScrollView>
+        {viewMode === 'list' ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statusTabs}>
+            <StatusChip label="すべて" active={selectedStatus === 'all'} onPress={() => setSelectedStatus('all')} />
+            {scheduleStatuses.map((status) => (
+              <StatusChip
+                key={status}
+                label={`${goodsStatusLabels[status]} ${statusCounts[status] ?? 0}`}
+                active={selectedStatus === status}
+                onPress={() => setSelectedStatus(status)}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.calendarPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.calendarHeader}>
-            <View>
-              <Text style={[styles.calendarTitle, { color: colors.text }]}>今後7日</Text>
-              <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
-            </View>
-            <Ionicons color={colors.primary} name="calendar-number-outline" size={24} />
-          </View>
-          <View style={styles.weekRow}>
-            {weekDays.map((day) => {
-              const count = scheduleDateCounts.get(day.key) ?? 0;
-              return (
-                <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
-                  <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
-                  <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
-                  <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
+        {viewMode === 'list' ? (
+          <>
+            <Pressable
+              onPress={() => setViewMode('calendar')}
+              style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
+                <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
+              </View>
+              <View style={styles.calendarLinkText}>
+                <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
+                <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
+              </View>
+              <Ionicons color={colors.muted} name="chevron-forward" size={20} />
+            </Pressable>
 
-        {groupedSchedule.map(([dateLabel, items]) => (
-          <View key={dateLabel} style={styles.dateGroup}>
-            <View style={[styles.dateGroupHeader, { backgroundColor: colors.elevated }]}>
-              <Ionicons color={colors.primary} name="time-outline" size={15} />
-              <Text style={[styles.dateText, { color: colors.text }]}>{dateLabel}</Text>
-              <Text style={[styles.dateCount, { color: colors.muted }]}>{items.length}件</Text>
-            </View>
-            {items.map((item) => (
-              <View key={item.id} style={styles.itemBlock}>
-                <View style={[styles.dateRow, { backgroundColor: colors.elevated }]}>
-                  <Text style={[styles.dateText, { color: colors.text }]}>{goodsStatusLabels[item.status]}</Text>
-                  <Pressable onPress={() => markOwned(item)} style={[styles.doneButton, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.doneText}>所持へ</Text>
-                  </Pressable>
+            {scheduleGoods.map((item) => (
+              <ScheduleItem
+                key={item.id}
+                item={item}
+                onDecrease={() => updateQuantity(item.id, -1)}
+                onIncrease={() => updateQuantity(item.id, 1)}
+                onMarkOwned={() => markOwned(item)}
+                onPress={() => setSelected(item)}
+                onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <Pressable
+              onPress={() => setViewMode('list')}
+              style={[styles.backToListButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Ionicons color={colors.primary} name="chevron-back" size={19} />
+              <Text style={[styles.backToListText, { color: colors.text }]}>予定一覧に戻る</Text>
+            </Pressable>
+
+            <View style={[styles.calendarPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.calendarHeader}>
+                <View>
+                  <Text style={[styles.calendarTitle, { color: colors.text }]}>今後7日</Text>
+                  <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
                 </View>
-                <GoodsCard
-                  item={item}
-                  mode="manage"
-                  onDecrease={() => updateQuantity(item.id, -1)}
-                  onIncrease={() => updateQuantity(item.id, 1)}
-                  onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
-                  onPress={() => setSelected(item)}
-                />
+                <Ionicons color={colors.primary} name="calendar-number-outline" size={24} />
+              </View>
+              <View style={styles.weekRow}>
+                {weekDays.map((day) => {
+                  const count = scheduleDateCounts.get(day.key) ?? 0;
+                  return (
+                    <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
+                      <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
+                      <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
+                      <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {groupedSchedule.map(([dateLabel, items]) => (
+              <View key={dateLabel} style={styles.dateGroup}>
+                <View style={[styles.dateGroupHeader, { backgroundColor: colors.elevated }]}>
+                  <Ionicons color={colors.primary} name="time-outline" size={15} />
+                  <Text style={[styles.dateText, { color: colors.text }]}>{dateLabel}</Text>
+                  <Text style={[styles.dateCount, { color: colors.muted }]}>{items.length}件</Text>
+                </View>
+                {items.map((item) => (
+                  <ScheduleItem
+                    key={item.id}
+                    item={item}
+                    onDecrease={() => updateQuantity(item.id, -1)}
+                    onIncrease={() => updateQuantity(item.id, 1)}
+                    onMarkOwned={() => markOwned(item)}
+                    onPress={() => setSelected(item)}
+                    onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
+                  />
+                ))}
               </View>
             ))}
-          </View>
-        ))}
+          </>
+        )}
         {!scheduleGoods.length ? (
           <View style={[styles.empty, { borderColor: colors.border }]}>
             <Ionicons color={colors.muted} name="calendar-clear-outline" size={42} />
@@ -225,6 +263,44 @@ function StatusChip({ label, active, onPress }: { label: string; active: boolean
   );
 }
 
+function ScheduleItem({
+  item,
+  onDecrease,
+  onIncrease,
+  onMarkOwned,
+  onPress,
+  onToggleFavorite,
+}: {
+  item: Goods;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  onMarkOwned: () => void;
+  onPress: () => void;
+  onToggleFavorite: () => void;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={styles.itemBlock}>
+      <View style={[styles.dateRow, { backgroundColor: colors.elevated }]}>
+        <Text style={[styles.dateText, { color: colors.text }]}>
+          {getScheduleDate(item) || '日付未設定'} / {goodsStatusLabels[item.status]}
+        </Text>
+        <Pressable onPress={onMarkOwned} style={[styles.doneButton, { backgroundColor: colors.primary }]}>
+          <Text style={styles.doneText}>所持へ</Text>
+        </Pressable>
+      </View>
+      <GoodsCard
+        item={item}
+        mode="manage"
+        onDecrease={onDecrease}
+        onIncrease={onIncrease}
+        onToggleFavorite={onToggleFavorite}
+        onPress={onPress}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { borderBottomWidth: 1, padding: 18, paddingBottom: 12 },
@@ -237,6 +313,31 @@ const styles = StyleSheet.create({
   statusChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 36, justifyContent: 'center', paddingHorizontal: 13 },
   statusChipText: { fontSize: 12, fontWeight: '900' },
   content: { padding: 18, paddingBottom: 96 },
+  calendarLink: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    minHeight: 66,
+    padding: 12,
+  },
+  calendarLinkIcon: { alignItems: 'center', borderRadius: 999, height: 42, justifyContent: 'center', width: 42 },
+  calendarLinkText: { flex: 1 },
+  calendarLinkTitle: { fontSize: 15, fontWeight: '900' },
+  calendarLinkSubtitle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  backToListButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    height: 44,
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  backToListText: { fontSize: 13, fontWeight: '900' },
   calendarPanel: { borderRadius: 8, borderWidth: 1, marginBottom: 16, padding: 12 },
   calendarHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   calendarTitle: { fontSize: 17, fontWeight: '900' },

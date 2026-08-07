@@ -237,7 +237,15 @@ export default function ScanScreen() {
 
   const cameraReady = Platform.OS !== 'web' && permission?.granted && isFocused && (mode === 'barcode' || mode === 'check');
   const openingGoods = useMemo(() => goods.filter((item) => item.isRandom && item.status !== 'unorganized'), [goods]);
-  const eventGoods = useMemo(() => goods.filter((item) => item.status === 'wanted' || item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped'), [goods]);
+  const eventGoods = useMemo(
+    () =>
+      goods.filter(
+        (item) =>
+          item.quantity > 0 &&
+          (item.status === 'wanted' || item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped'),
+      ),
+    [goods],
+  );
   const openingTotal = Object.values(openingCounts).reduce((sum, count) => sum + count, 0);
   useScrollToTop(scrollRef);
 
