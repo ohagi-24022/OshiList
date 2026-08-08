@@ -11,9 +11,10 @@ import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { useEvents } from '../../src/store/EventContext';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
-import { Goods, GoodsStatus } from '../../src/types';
+import { EventPlan, Goods, GoodsStatus } from '../../src/types';
 
 const scheduleStatuses: GoodsStatus[] = ['reserved', 'ordered', 'shipped', 'wanted'];
+const eventStatuses: GoodsStatus[] = ['wanted', 'reserved', 'ordered', 'shipped'];
 
 function getScheduleDate(item: Goods) {
   return item.pickupDate || item.releaseDate || item.reservationDeadline || '';
@@ -64,7 +65,7 @@ export default function CalendarScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
   const { colors } = useAppTheme();
-  const { events } = useEvents();
+  const { events, selectedEventId } = useEvents();
   const { goods, removeGoods, updateGoods, updateQuantity } = useGoods();
   const scrollRef = useRef<ScrollView>(null);
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
@@ -80,6 +81,11 @@ export default function CalendarScreen() {
   const calendarMonths = useMemo(() => groupCalendarDays(yearDays), [yearDays]);
   const currentMonth = calendarMonths[currentMonthIndex];
   const selectedItem = selected ? goods.find((item) => item.id === selected.id) ?? selected : null;
+  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
+  const eventGoods = useMemo(
+    () => goods.filter((item) => eventStatuses.includes(item.status) && item.eventId === selectedEvent?.id && item.quantity > 0),
+    [goods, selectedEvent?.id],
+  );
 
   const dateCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -152,17 +158,15 @@ export default function CalendarScreen() {
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       {params.from === 'event' ? (
         <SourcePreview
-          icon="sparkles-outline"
-          title="イベント"
-          subtitle="イベントごとに購入予定リストを管理"
-          count={`${events.length}件`}
+          events={events}
+          eventGoods={eventGoods}
+          kind="event"
+          selectedEvent={selectedEvent}
         />
       ) : params.from === 'schedule' ? (
         <SourcePreview
-          icon="calendar-outline"
-          title="予定"
-          subtitle="予約・発送・到着待ちをまとめて確認"
-          count={`${scheduleGoods.length}件`}
+          kind="schedule"
+          scheduleGoods={scheduleGoods}
         />
       ) : null}
       <Animated.View
@@ -308,33 +312,125 @@ export default function CalendarScreen() {
 }
 
 function SourcePreview({
-  count,
-  icon,
-  subtitle,
-  title,
+  events = [],
+  eventGoods = [],
+  kind,
+  scheduleGoods = [],
+  selectedEvent,
 }: {
-  count: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  subtitle: string;
-  title: string;
+  events?: EventPlan[];
+  eventGoods?: Goods[];
+  kind: 'event' | 'schedule';
+  scheduleGoods?: Goods[];
+  selectedEvent?: EventPlan | null;
 }) {
   const { colors } = useAppTheme();
+  const eventQuantity = eventGoods.reduce((sum, item) => sum + item.quantity, 0);
+
+  if (kind === 'event') {
+    return (
+      <View pointerEvents="none" style={[styles.sourcePreview, { backgroundColor: colors.background }]}>
+        <View style={styles.titleRow}>
+          <View>
+            <Text style={[styles.title, { color: colors.text }]}>イベント</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>イベントごとに購入予定リストを管理</Text>
+          </View>
+          <View style={[styles.summaryBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons color={colors.primary} name="sparkles-outline" size={18} />
+            <Text style={[styles.summaryText, { color: colors.text }]}>{eventGoods.length}種 / {eventQuantity}個</Text>
+          </View>
+        </View>
+
+        <View style={[styles.previewActionButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons color={colors.primary} name="add-circle-outline" size={20} />
+          <Text style={[styles.previewActionText, { color: colors.text }]}>イベント登録</Text>
+          <Ionicons color={colors.muted} name="chevron-down" size={18} />
+        </View>
+
+        {!!events.length && (
+          <View style={styles.previewChipRow}>
+            {events.slice(0, 3).map((event) => {
+              const active = event.id === selectedEvent?.id;
+              return (
+                <View key={event.id} style={[styles.previewChip, { backgroundColor: active ? colors.text : colors.surface, borderColor: colors.border }]}>
+                  <Text numberOfLines={1} style={[styles.previewChipText, { color: active ? colors.background : colors.text }]}>{event.name}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {selectedEvent ? (
+          <View style={[styles.sectionPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.eventRow}>
+              <View style={styles.eventText}>
+                <Text style={[styles.eventName, { color: colors.text }]}>{selectedEvent.name}</Text>
+                <Text style={[styles.eventMeta, { color: colors.muted }]}>
+                  {[selectedEvent.date, selectedEvent.venue].filter(Boolean).join(' / ') || '日程未設定'}
+                </Text>
+              </View>
+              <Ionicons color={colors.primary} name="create-outline" size={19} />
+              <Ionicons color={colors.danger} name="trash-outline" size={19} />
+            </View>
+            {!!selectedEvent.memo && <Text style={[styles.eventMeta, { color: colors.muted }]}>{selectedEvent.memo}</Text>}
+            <View style={[styles.previewSecondaryButton, { borderColor: colors.border }]}>
+              <Ionicons color={colors.primary} name="add" size={18} />
+              <Text style={[styles.returnButtonText, { color: colors.text }]}>購入予定を追加</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {eventGoods.slice(0, 2).map((item) => (
+          <GoodsCard key={item.id} item={item} mode="view" />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View pointerEvents="none" style={[styles.sourcePreview, { backgroundColor: colors.background }]}>
       <View style={styles.titleRow}>
         <View>
-          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>{subtitle}</Text>
+          <Text style={[styles.title, { color: colors.text }]}>予定</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>予約・発送・到着待ちをまとめて確認</Text>
         </View>
         <View style={[styles.summaryBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons color={colors.primary} name={icon} size={18} />
-          <Text style={[styles.summaryText, { color: colors.text }]}>{count}</Text>
+          <Ionicons color={colors.primary} name="calendar-outline" size={18} />
+          <Text style={[styles.summaryText, { color: colors.text }]}>カレンダー</Text>
         </View>
       </View>
-      <View style={[styles.previewPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.previewTitle, { color: colors.text }]}>スワイプで戻ります</Text>
-        <Text style={[styles.previewText, { color: colors.muted }]}>前の画面へ戻る動きを表示しています。</Text>
+
+      <View style={styles.previewChipRow}>
+        <View style={[styles.previewChip, { backgroundColor: colors.text, borderColor: colors.text }]}>
+          <Text style={[styles.previewChipText, { color: colors.background }]}>すべて</Text>
+        </View>
+        {scheduleStatuses.slice(0, 3).map((status) => (
+          <View key={status} style={[styles.previewChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.previewChipText, { color: colors.text }]}>{goodsStatusLabels[status]}</Text>
+          </View>
+        ))}
       </View>
+
+      {scheduleGoods.slice(0, 3).map((item) => (
+        <View key={item.id} style={styles.itemBlock}>
+          <View style={[styles.dateRow, { backgroundColor: colors.elevated }]}>
+            <Text style={[styles.dateText, { color: colors.text }]}>
+              {getScheduleDate(item) || '日付未設定'} / {goodsStatusLabels[item.status]}
+            </Text>
+            <View style={[styles.doneButton, { backgroundColor: colors.primary }]}>
+              <Text style={styles.doneText}>所持へ</Text>
+            </View>
+          </View>
+          <GoodsCard item={item} mode="view" />
+        </View>
+      ))}
+
+      {!scheduleGoods.length ? (
+        <View style={[styles.empty, { borderColor: colors.border }]}>
+          <Ionicons color={colors.muted} name="calendar-clear-outline" size={42} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>予定はありません</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -349,9 +445,12 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, marginTop: 2 },
   summaryBadge: { alignItems: 'center', borderRadius: 999, borderWidth: 1, flexDirection: 'row', gap: 6, height: 34, paddingHorizontal: 12 },
   summaryText: { fontSize: 12, fontWeight: '900' },
-  previewPanel: { borderRadius: 8, borderWidth: 1, marginTop: 14, padding: 14 },
-  previewTitle: { fontSize: 16, fontWeight: '900' },
-  previewText: { fontSize: 12, fontWeight: '800', marginTop: 4 },
+  previewActionButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 9, marginTop: 14, minHeight: 50, paddingHorizontal: 14 },
+  previewActionText: { flex: 1, fontSize: 15, fontWeight: '900' },
+  previewChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  previewChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 36, justifyContent: 'center', maxWidth: 160, paddingHorizontal: 12 },
+  previewChipText: { fontSize: 12, fontWeight: '900' },
+  previewSecondaryButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 7, height: 42, justifyContent: 'center' },
   returnRow: { flexDirection: 'row', gap: 8 },
   returnButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 7, height: 44, justifyContent: 'center' },
   returnButtonText: { fontSize: 13, fontWeight: '900' },

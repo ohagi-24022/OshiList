@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppSettings } from '../src/store/AppSettingsContext';
@@ -52,7 +52,7 @@ export default function TabEditorScreen() {
         <View style={styles.iconButton} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View>
           <Text style={[styles.title, { color: colors.text }]}>表示するタブを2つ選択</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>
@@ -81,7 +81,9 @@ export default function TabEditorScreen() {
           <Text style={[styles.fixedTitle, { color: colors.text }]}>固定タブ</Text>
           <Text style={[styles.fixedText, { color: colors.muted }]}>ホーム / 登録 / 設定</Text>
         </View>
+      </ScrollView>
 
+      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
         <Pressable onPress={save} style={[styles.saveButton, { backgroundColor: draftTabs.length === 2 ? colors.primary : colors.border }]}>
           <Text style={styles.saveText}>このタブ構成にする</Text>
         </Pressable>
@@ -95,7 +97,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', height: 54, justifyContent: 'space-between', paddingHorizontal: 12 },
   iconButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
   headerTitle: { fontSize: 17, fontWeight: '900' },
-  content: { flex: 1, gap: 16, padding: 18 },
+  content: { gap: 16, padding: 18, paddingBottom: 18 },
   title: { fontSize: 24, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   optionGrid: { gap: 10 },
@@ -104,6 +106,7 @@ const styles = StyleSheet.create({
   fixedBox: { borderRadius: 8, borderWidth: 1, padding: 12 },
   fixedTitle: { fontSize: 13, fontWeight: '900' },
   fixedText: { fontSize: 12, fontWeight: '800', marginTop: 3 },
-  saveButton: { alignItems: 'center', borderRadius: 8, height: 50, justifyContent: 'center', marginTop: 'auto' },
+  footer: { borderTopWidth: 1, padding: 18, paddingTop: 12 },
+  saveButton: { alignItems: 'center', borderRadius: 8, height: 50, justifyContent: 'center' },
   saveText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
 });
