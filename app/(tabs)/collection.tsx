@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
-import { useScrollToTop } from '@react-navigation/native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
 import { ManageGoodsPanel } from '../../src/components/ManageGoodsPanel';
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
@@ -106,7 +106,6 @@ function groupRandomGoods(goods: Goods[]) {
 }
 
 export default function HomeScreen() {
-  const navigation = useNavigation();
   const params = useLocalSearchParams<{ mode?: string }>();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -177,7 +176,17 @@ export default function HomeScreen() {
       }),
     [groupMode],
   );
-  useScrollToTop(listRef);
+  const resetCollectionTab = useCallback(() => {
+    setScreenMode('collection');
+    lastScrollYRef.current = 0;
+    headerHiddenRef.current = false;
+    Animated.timing(headerTranslateY, {
+      duration: 180,
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [headerTranslateY]);
+  useTabReset(listRef, resetCollectionTab);
 
   useEffect(() => {
     if (params.mode === 'manage') {
@@ -194,24 +203,6 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   };
-
-  useEffect(() => {
-    const tabNavigation = navigation as unknown as {
-      addListener: (eventName: 'tabPress', callback: () => void) => () => void;
-    };
-    const unsubscribe = tabNavigation.addListener('tabPress', () => {
-      setScreenMode('collection');
-      lastScrollYRef.current = 0;
-      headerHiddenRef.current = false;
-      Animated.timing(headerTranslateY, {
-        duration: 180,
-        toValue: 0,
-        useNativeDriver: true,
-      }).start();
-      requestAnimationFrame(() => listRef.current?.scrollToOffset({ animated: true, offset: 0 }));
-    });
-    return unsubscribe;
-  }, [headerTranslateY, navigation]);
 
   useEffect(() => {
     if (headerHiddenRef.current) {

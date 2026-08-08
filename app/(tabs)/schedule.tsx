@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useScrollToTop } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
 import { GoodsEditForm } from '../../src/components/GoodsEditForm';
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
@@ -56,7 +56,7 @@ export default function ScheduleScreen() {
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
   };
-  useScrollToTop(scrollRef);
+  useTabReset(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>

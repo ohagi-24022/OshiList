@@ -1,4 +1,3 @@
-import { useScrollToTop } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef } from 'react';
@@ -6,6 +5,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HomeGoodsTile } from '../../src/components/HomeGoodsTile';
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { isOshiGoods } from '../../src/lib/oshi';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
@@ -60,7 +60,7 @@ export default function HomeScreen() {
   const totalQuantity = ownedGoods.reduce((sum, item) => sum + item.quantity, 0);
   const oshiQuantity = oshiGoods.reduce((sum, item) => sum + item.quantity, 0);
   const lineupRate = lineupProgress ? Math.round((lineupProgress.owned.size / lineupProgress.total.size) * 100) : 0;
-  useScrollToTop(scrollRef);
+  useTabReset(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>

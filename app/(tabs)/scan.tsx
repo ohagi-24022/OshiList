@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useIsFocused, useScrollToTop } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,6 +22,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { persistPickedImage, requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
 import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
@@ -233,7 +234,7 @@ export default function ScanScreen() {
   const openingGoods = useMemo(() => goods.filter((item) => item.isRandom && item.status !== 'unorganized'), [goods]);
   const openingTotal = Object.values(openingCounts).reduce((sum, count) => sum + count, 0);
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
-  useScrollToTop(scrollRef);
+  useTabReset(scrollRef);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>

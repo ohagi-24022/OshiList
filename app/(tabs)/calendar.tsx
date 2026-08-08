@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useScrollToTop } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
-import { Animated, GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
 import { GoodsEditForm } from '../../src/components/GoodsEditForm';
+import { useSwipeBack } from '../../src/hooks/useSwipeBack';
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { useEvents } from '../../src/store/EventContext';
 import { useGoods } from '../../src/store/GoodsContext';
@@ -70,8 +71,6 @@ export default function CalendarScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
   const [selected, setSelected] = useState<Goods | null>(null);
-  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number } | null>(null);
-  const swipeTranslateX = useRef(new Animated.Value(0)).current;
 
   const scheduleGoods = useMemo(
     () => goods.filter((item) => scheduleStatuses.includes(item.status) && item.quantity > 0).sort(compareByDate),
@@ -113,7 +112,6 @@ export default function CalendarScreen() {
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
   };
-  useScrollToTop(scrollRef);
 
   const goToSchedule = () => router.push('/(tabs)/schedule');
   const goToEvent = () => router.push('/(tabs)/event');
@@ -128,31 +126,8 @@ export default function CalendarScreen() {
     }
     router.back();
   };
-  const beginSwipe = (event: GestureResponderEvent) => {
-    setSwipeStart({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
-  };
-  const moveSwipe = (event: GestureResponderEvent) => {
-    if (!swipeStart) return;
-    const dx = event.nativeEvent.pageX - swipeStart.x;
-    const dy = event.nativeEvent.pageY - swipeStart.y;
-    if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-      swipeTranslateX.setValue(Math.min(dx, 160));
-    }
-  };
-  const finishSwipe = (event: GestureResponderEvent) => {
-    if (!swipeStart) return;
-    const dx = event.nativeEvent.pageX - swipeStart.x;
-    const dy = event.nativeEvent.pageY - swipeStart.y;
-    setSwipeStart(null);
-    if (dx > 90 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-      Animated.timing(swipeTranslateX, { duration: 180, toValue: 420, useNativeDriver: true }).start(() => {
-        swipeTranslateX.setValue(0);
-        goBackToSource();
-      });
-      return;
-    }
-    Animated.spring(swipeTranslateX, { bounciness: 0, speed: 18, toValue: 0, useNativeDriver: true }).start();
-  };
+  const { gestureHandlers, translateX: swipeTranslateX } = useSwipeBack({ onClose: goBackToSource, threshold: 90 });
+  useTabReset(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -170,13 +145,7 @@ export default function CalendarScreen() {
         />
       ) : null}
       <Animated.View
-        onTouchCancel={() => {
-          setSwipeStart(null);
-          Animated.spring(swipeTranslateX, { bounciness: 0, speed: 18, toValue: 0, useNativeDriver: true }).start();
-        }}
-        onTouchEnd={finishSwipe}
-        onTouchMove={moveSwipe}
-        onTouchStart={beginSwipe}
+        {...gestureHandlers}
         style={[styles.animatedContent, { backgroundColor: colors.background, transform: [{ translateX: swipeTranslateX }] }]}
       >
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>

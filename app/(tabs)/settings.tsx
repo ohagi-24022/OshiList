@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useScrollToTop } from '@react-navigation/native';
 import { useRef } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
@@ -23,7 +23,7 @@ export default function SettingsScreen() {
   const { settings, updateSettings } = useAppSettings();
   const { goods } = useGoods();
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
+  useTabReset(scrollRef);
 
   const confirmDeletePreset = (preset: ThemePreset) => {
     if (!preset.custom) return;

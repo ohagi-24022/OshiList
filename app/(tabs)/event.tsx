@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
+import { useSwipeBack } from '../../src/hooks/useSwipeBack';
+import { useTabReset } from '../../src/hooks/useTabReset';
 import { useEvents } from '../../src/store/EventContext';
 import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
@@ -15,13 +16,10 @@ const eventStatuses = ['wanted', 'reserved', 'ordered', 'shipped'];
 
 export default function EventScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const { colors } = useAppTheme();
   const { addGoods, goods, updateGoods, updateQuantity, removeGoods } = useGoods();
   const { events, selectedEventId, setSelectedEventId, addEvent, updateEvent, removeEvent } = useEvents();
   const scrollRef = useRef<ScrollView>(null);
-  const addGoodsTranslateX = useRef(new Animated.Value(Dimensions.get('window').width)).current;
-  const addGoodsTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [venue, setVenue] = useState('');
@@ -36,29 +34,28 @@ export default function EventScreen() {
     [goods, selectedEvent?.id],
   );
   const totalQuantity = eventGoods.reduce((sum, item) => sum + item.quantity, 0);
-  useScrollToTop(scrollRef);
+  const resetOverlay = useCallback(() => {
+    setScreenMode('list');
+    resetForm();
+  }, []);
+  const {
+    close: closePanel,
+    gestureHandlers: panelGestureHandlers,
+    open: openPanel,
+    translateX: panelTranslateX,
+  } = useSwipeBack({ onClose: resetOverlay, startOpen: true });
 
-  useEffect(() => {
-    const tabNavigation = navigation as unknown as {
-      addListener: (eventName: 'tabPress', callback: () => void) => () => void;
-    };
-    const unsubscribe = tabNavigation.addListener('tabPress', () => {
-      if (screenMode !== 'list') {
-        addGoodsTranslateX.setValue(Dimensions.get('window').width);
-        setScreenMode('list');
-        requestAnimationFrame(() => scrollRef.current?.scrollTo({ animated: true, y: 0 }));
-        return;
-      }
-      scrollRef.current?.scrollTo({ animated: true, y: 0 });
-    });
-    return unsubscribe;
-  }, [addGoodsTranslateX, navigation, screenMode]);
+  useTabReset(
+    scrollRef,
+    useCallback(() => {
+      setScreenMode('list');
+    }, []),
+  );
 
   useEffect(() => {
     if (screenMode !== 'addGoods' && screenMode !== 'editEvent') return;
-    addGoodsTranslateX.setValue(Dimensions.get('window').width);
-    Animated.timing(addGoodsTranslateX, { duration: 190, toValue: 0, useNativeDriver: true }).start();
-  }, [addGoodsTranslateX, screenMode]);
+    openPanel();
+  }, [openPanel, screenMode]);
 
   const resetForm = () => {
     setName('');
@@ -105,54 +102,6 @@ export default function EventScreen() {
       { text: 'キャンセル', style: 'cancel' },
       { text: '削除', style: 'destructive', onPress: () => removeEvent(selectedEvent.id) },
     ]);
-  };
-
-  const closePanel = () => {
-    Animated.timing(addGoodsTranslateX, {
-      duration: 190,
-      toValue: Dimensions.get('window').width,
-      useNativeDriver: true,
-    }).start(() => {
-      setScreenMode('list');
-      resetForm();
-    });
-  };
-
-  const rememberAddGoodsTouchStart = (event: GestureResponderEvent) => {
-    addGoodsTouchStartRef.current = {
-      x: event.nativeEvent.pageX,
-      y: event.nativeEvent.pageY,
-      time: Date.now(),
-    };
-  };
-
-  const moveAddGoodsWithSwipe = (event: GestureResponderEvent) => {
-    const start = addGoodsTouchStartRef.current;
-    if (!start) return;
-    const dx = event.nativeEvent.pageX - start.x;
-    const dy = event.nativeEvent.pageY - start.y;
-    if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-      addGoodsTranslateX.setValue(Math.min(dx, 150));
-    }
-  };
-
-  const finishAddGoodsSwipe = (event: GestureResponderEvent) => {
-    const start = addGoodsTouchStartRef.current;
-    addGoodsTouchStartRef.current = null;
-    if (!start) return;
-    const dx = event.nativeEvent.pageX - start.x;
-    const dy = event.nativeEvent.pageY - start.y;
-    const fastEnough = Date.now() - start.time < 700;
-    if (dx > 66 && Math.abs(dx) > Math.abs(dy) * 1.25 && fastEnough) {
-      closePanel();
-      return;
-    }
-    Animated.spring(addGoodsTranslateX, {
-      damping: 18,
-      stiffness: 220,
-      toValue: 0,
-      useNativeDriver: true,
-    }).start();
   };
 
   return (
@@ -269,14 +218,12 @@ export default function EventScreen() {
 
       {screenMode === 'addGoods' && selectedEvent ? (
         <Animated.View
-          onTouchEnd={finishAddGoodsSwipe}
-          onTouchMove={moveAddGoodsWithSwipe}
-          onTouchStart={rememberAddGoodsTouchStart}
+          {...panelGestureHandlers}
           style={[
             styles.addGoodsOverlay,
             {
               backgroundColor: colors.background,
-              transform: [{ translateX: addGoodsTranslateX }],
+              transform: [{ translateX: panelTranslateX }],
             },
           ]}
         >
@@ -290,9 +237,7 @@ export default function EventScreen() {
           <ScrollView
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
-            onTouchEnd={finishAddGoodsSwipe}
-            onTouchMove={moveAddGoodsWithSwipe}
-            onTouchStart={rememberAddGoodsTouchStart}
+            {...panelGestureHandlers}
           >
             <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.panelTitle, { color: colors.text }]}>{selectedEvent.name}</Text>
@@ -313,14 +258,12 @@ export default function EventScreen() {
 
       {screenMode === 'editEvent' ? (
         <Animated.View
-          onTouchEnd={finishAddGoodsSwipe}
-          onTouchMove={moveAddGoodsWithSwipe}
-          onTouchStart={rememberAddGoodsTouchStart}
+          {...panelGestureHandlers}
           style={[
             styles.addGoodsOverlay,
             {
               backgroundColor: colors.background,
-              transform: [{ translateX: addGoodsTranslateX }],
+              transform: [{ translateX: panelTranslateX }],
             },
           ]}
         >
@@ -334,9 +277,7 @@ export default function EventScreen() {
           <ScrollView
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
-            onTouchEnd={finishAddGoodsSwipe}
-            onTouchMove={moveAddGoodsWithSwipe}
-            onTouchStart={rememberAddGoodsTouchStart}
+            {...panelGestureHandlers}
           >
             <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.panelTitle, { color: colors.text }]}>イベント情報</Text>

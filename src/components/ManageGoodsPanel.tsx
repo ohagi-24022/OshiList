@@ -1,12 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useScrollToTop } from '@react-navigation/native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Dimensions,
   FlatList,
-  GestureResponderEvent,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -21,6 +18,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { GoodsCard } from './GoodsCard';
 import { GoodsEditForm } from './GoodsEditForm';
+import { useSwipeBack } from '../hooks/useSwipeBack';
+import { useTabReset } from '../hooks/useTabReset';
 import { useGoods } from '../store/GoodsContext';
 import { useAppTheme } from '../store/ThemeContext';
 import { Goods } from '../types';
@@ -38,8 +37,6 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
   const headerTranslateY = useRef(new Animated.Value(0)).current;
   const headerHiddenRef = useRef(false);
   const lastScrollYRef = useRef(0);
-  const detailTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const detailTranslateX = useRef(new Animated.Value(0)).current;
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Goods | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -69,66 +66,34 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
   const selectedGoods = useMemo(() => goods.filter((item) => selectedIds.has(item.id)), [goods, selectedIds]);
   const seriesSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.seriesName)), [goods]);
   const characterSuggestions = useMemo(() => uniqueValues(goods.map((item) => item.characterName)), [goods]);
-  useScrollToTop(listRef);
+  const closeDetailState = useCallback(() => {
+    setSelected(null);
+  }, []);
+  const {
+    close: closeDetail,
+    gestureHandlers: detailGestureHandlers,
+    open: openDetail,
+    translateX: detailTranslateX,
+  } = useSwipeBack({ onClose: closeDetailState, startOpen: true, threshold: 64 });
 
-  useEffect(() => {
-    if (!selected) return;
-
-    detailTranslateX.setValue(Dimensions.get('window').width);
-    Animated.timing(detailTranslateX, {
+  const resetManageTab = useCallback(() => {
+    closeDetailState();
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    lastScrollYRef.current = 0;
+    headerHiddenRef.current = false;
+    Animated.timing(headerTranslateY, {
       duration: 180,
       toValue: 0,
       useNativeDriver: true,
     }).start();
-  }, [detailTranslateX, selected]);
+  }, [closeDetailState, headerTranslateY]);
+  useTabReset(listRef, resetManageTab);
 
-  const closeDetail = () => {
-    detailTranslateX.setValue(0);
-    setSelected(null);
-  };
-  const rememberDetailTouchStart = (event: GestureResponderEvent) => {
-    detailTouchStartRef.current = {
-      x: event.nativeEvent.pageX,
-      y: event.nativeEvent.pageY,
-      time: Date.now(),
-    };
-  };
-  const moveDetailWithSwipe = (event: GestureResponderEvent) => {
-    const start = detailTouchStartRef.current;
-    if (!start) return;
-
-    const dx = event.nativeEvent.pageX - start.x;
-    const dy = event.nativeEvent.pageY - start.y;
-    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
-    if (dx > 0 && horizontal) {
-      detailTranslateX.setValue(Math.min(dx, 140));
-    }
-  };
-  const finishDetailSwipe = (event: GestureResponderEvent) => {
-    const start = detailTouchStartRef.current;
-    detailTouchStartRef.current = null;
-    if (!start) return;
-
-    const dx = event.nativeEvent.pageX - start.x;
-    const dy = event.nativeEvent.pageY - start.y;
-    const elapsed = Date.now() - start.time;
-    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
-    const fastEnough = elapsed < 700;
-    if (dx > 64 && horizontal && fastEnough) {
-      Animated.timing(detailTranslateX, {
-        duration: 180,
-        toValue: Dimensions.get('window').width,
-        useNativeDriver: true,
-      }).start(() => closeDetail());
-      return;
-    }
-    Animated.spring(detailTranslateX, {
-      damping: 18,
-      stiffness: 220,
-      toValue: 0,
-      useNativeDriver: true,
-    }).start();
-  };
+  useEffect(() => {
+    if (!selected) return;
+    openDetail();
+  }, [openDetail, selected]);
 
   const toggleSelectionMode = () => {
     setSelectionMode((current) => {
@@ -420,9 +385,7 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
 
       <Modal animationType="none" transparent visible={!!selectedItem} onRequestClose={closeDetail}>
         <SafeAreaView
-          onTouchEnd={finishDetailSwipe}
-          onTouchMove={moveDetailWithSwipe}
-          onTouchStart={rememberDetailTouchStart}
+          {...detailGestureHandlers}
           style={styles.modalScreen}
         >
           <Animated.View
@@ -449,9 +412,7 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
               <ScrollView
                 contentContainerStyle={styles.modalContent}
                 keyboardShouldPersistTaps="handled"
-                onTouchEnd={finishDetailSwipe}
-                onTouchMove={moveDetailWithSwipe}
-                onTouchStart={rememberDetailTouchStart}
+                {...detailGestureHandlers}
                 showsVerticalScrollIndicator={false}
               >
                 {selectedItem ? (

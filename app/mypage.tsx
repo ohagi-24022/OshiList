@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useScrollToTop } from '@react-navigation/native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ColorPicker } from '../src/components/ColorPicker';
 import { GoodsImageField } from '../src/components/GoodsImageField';
+import { useTabReset } from '../src/hooks/useTabReset';
 import { normalizeHex } from '../src/lib/color';
 import { searchProductsByName } from '../src/lib/productLookup';
 import { useGoods } from '../src/store/GoodsContext';
@@ -137,7 +137,7 @@ export default function MyPageScreen() {
   };
 
   const allCandidates = [...localImageCandidates, ...imageCandidates];
-  useScrollToTop(scrollRef);
+  useTabReset(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
