@@ -57,6 +57,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="calendar"
+        options={{
+          href: visibleTabs.has('calendar') ? undefined : null,
+          title: 'カレンダー',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="calendar-number-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="event"
         options={{
           href: visibleTabs.has('event') ? undefined : null,

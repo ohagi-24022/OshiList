@@ -10,6 +10,7 @@ import { useAppTheme } from '../src/store/ThemeContext';
 const tabOptions = [
   { id: 'collection', label: 'コレクション', icon: 'albums-outline' },
   { id: 'schedule', label: '予定', icon: 'calendar-outline' },
+  { id: 'calendar', label: 'カレンダー', icon: 'calendar-number-outline' },
   { id: 'manage', label: '管理', icon: 'create-outline' },
   { id: 'mypage', label: 'マイページ', icon: 'person-circle-outline' },
   { id: 'event', label: 'イベント', icon: 'sparkles-outline' },

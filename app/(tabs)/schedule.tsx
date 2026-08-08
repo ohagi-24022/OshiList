@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useRef, useState } from 'react';
-import { Animated, GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
@@ -16,51 +17,6 @@ function getScheduleDate(item: Goods) {
   return item.pickupDate || item.releaseDate || item.reservationDeadline || '';
 }
 
-function getDateKey(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getYearDays() {
-  const today = new Date();
-  return Array.from({ length: 365 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-    return {
-      key: getDateKey(date),
-      day: date.getDate(),
-      monthKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-      monthLabel: date.toLocaleDateString('ja-JP', { month: 'long', year: 'numeric' }),
-      weekday: date.toLocaleDateString('ja-JP', { weekday: 'short' }),
-    };
-  });
-}
-
-function groupCalendarDays(days: ReturnType<typeof getYearDays>) {
-  const groups = new Map<string, { label: string; days: typeof days }>();
-  days.forEach((day) => {
-    const group = groups.get(day.monthKey) ?? { label: day.monthLabel, days: [] };
-    group.days.push(day);
-    groups.set(day.monthKey, group);
-  });
-  return Array.from(groups.entries()).map(([key, group]) => ({ key, ...group }));
-}
-
-function groupByScheduleDate(items: Goods[]) {
-  const groups = new Map<string, Goods[]>();
-  items.forEach((item) => {
-    const key = getScheduleDate(item) || '日付未設定';
-    groups.set(key, [...(groups.get(key) ?? []), item]);
-  });
-  return Array.from(groups.entries()).sort(([left], [right]) => {
-    if (left === '日付未設定') return 1;
-    if (right === '日付未設定') return -1;
-    return left.localeCompare(right);
-  });
-}
-
 function compareSchedule(a: Goods, b: Goods) {
   const dateA = getScheduleDate(a);
   const dateB = getScheduleDate(b);
@@ -71,14 +27,11 @@ function compareSchedule(a: Goods, b: Goods) {
 }
 
 export default function ScheduleScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { goods, removeGoods, updateGoods, updateQuantity } = useGoods();
   const [selectedStatus, setSelectedStatus] = useState<GoodsStatus | 'all'>('all');
   const [selected, setSelected] = useState<Goods | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
-  const [calendarTouchStart, setCalendarTouchStart] = useState<{ x: number; y: number } | null>(null);
-  const calendarTranslateX = useRef(new Animated.Value(0)).current;
 
   const scheduleGoods = useMemo(
     () =>
@@ -98,55 +51,8 @@ export default function ScheduleScreen() {
       }, {}),
     [goods],
   );
-  const yearDays = useMemo(() => getYearDays(), []);
-  const calendarMonths = useMemo(() => groupCalendarDays(yearDays), [yearDays]);
-  const currentMonth = calendarMonths[currentMonthIndex];
-  const groupedSchedule = useMemo(() => groupByScheduleDate(scheduleGoods), [scheduleGoods]);
-  const scheduleDateCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    scheduleGoods.forEach((item) => {
-      const key = getScheduleDate(item);
-      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
-    });
-    return counts;
-  }, [scheduleGoods]);
-
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
-  };
-  const rememberCalendarTouch = (event: GestureResponderEvent) => {
-    setCalendarTouchStart({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
-  };
-  const moveCalendarTouch = (event: GestureResponderEvent) => {
-    if (!calendarTouchStart) return;
-    const dx = event.nativeEvent.pageX - calendarTouchStart.x;
-    const dy = event.nativeEvent.pageY - calendarTouchStart.y;
-    if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      calendarTranslateX.setValue(Math.min(dx, 150));
-    }
-  };
-  const finishCalendarTouch = (event: GestureResponderEvent) => {
-    if (!calendarTouchStart) return;
-    const dx = event.nativeEvent.pageX - calendarTouchStart.x;
-    const dy = event.nativeEvent.pageY - calendarTouchStart.y;
-    setCalendarTouchStart(null);
-    if (dx > 80 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-      Animated.timing(calendarTranslateX, {
-        duration: 180,
-        toValue: 420,
-        useNativeDriver: true,
-      }).start(() => {
-        calendarTranslateX.setValue(0);
-        setViewMode('list');
-      });
-      return;
-    }
-    Animated.spring(calendarTranslateX, {
-      damping: 18,
-      stiffness: 220,
-      toValue: 0,
-      useNativeDriver: true,
-    }).start();
   };
 
   return (
@@ -154,10 +60,8 @@ export default function ScheduleScreen() {
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.titleRow}>
           <View>
-            <Text style={[styles.title, { color: colors.text }]}>{viewMode === 'calendar' ? 'カレンダー' : '予定'}</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {viewMode === 'calendar' ? '日付から予約・到着予定を確認' : '予約・発送・到着待ちをまとめて確認'}
-            </Text>
+            <Text style={[styles.title, { color: colors.text }]}>予定</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>予約・発送・到着待ちをまとめて確認</Text>
           </View>
           <View style={[styles.calendarBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons color={colors.primary} name="calendar-outline" size={18} />
@@ -165,132 +69,46 @@ export default function ScheduleScreen() {
           </View>
         </View>
 
-        {viewMode === 'list' ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statusTabs}>
-            <StatusChip label="すべて" active={selectedStatus === 'all'} onPress={() => setSelectedStatus('all')} />
-            {scheduleStatuses.map((status) => (
-              <StatusChip
-                key={status}
-                label={`${goodsStatusLabels[status]} ${statusCounts[status] ?? 0}`}
-                active={selectedStatus === status}
-                onPress={() => setSelectedStatus(status)}
-              />
-            ))}
-          </ScrollView>
-        ) : null}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statusTabs}>
+          <StatusChip label="すべて" active={selectedStatus === 'all'} onPress={() => setSelectedStatus('all')} />
+          {scheduleStatuses.map((status) => (
+            <StatusChip
+              key={status}
+              label={`${goodsStatusLabels[status]} ${statusCounts[status] ?? 0}`}
+              active={selectedStatus === status}
+              onPress={() => setSelectedStatus(status)}
+            />
+          ))}
+        </ScrollView>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {viewMode === 'list' ? (
-          <>
-            <Pressable
-              onPress={() => setViewMode('calendar')}
-              style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            >
-              <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
-                <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
-              </View>
-              <View style={styles.calendarLinkText}>
-                <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
-                <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>予約締切・発売日・受取日を日付で確認</Text>
-              </View>
-              <Ionicons color={colors.muted} name="chevron-forward" size={20} />
-            </Pressable>
+        <Pressable
+          onPress={() => router.push('/(tabs)/calendar')}
+          style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
+          </View>
+          <View style={styles.calendarLinkText}>
+            <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
+            <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>カレンダータブで日付ごとに確認します。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={20} />
+        </Pressable>
 
-            {scheduleGoods.map((item) => (
-              <ScheduleItem
-                key={item.id}
-                item={item}
-                onDecrease={() => updateQuantity(item.id, -1)}
-                onIncrease={() => updateQuantity(item.id, 1)}
-                onMarkOwned={() => markOwned(item)}
-                onPress={() => setSelected(item)}
-                onRemove={() => removeGoods(item.id)}
-                onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
-              />
-            ))}
-          </>
-        ) : (
-          <Animated.View
-            onTouchEnd={finishCalendarTouch}
-            onTouchMove={moveCalendarTouch}
-            onTouchStart={rememberCalendarTouch}
-            style={{ transform: [{ translateX: calendarTranslateX }] }}
-          >
-            <Pressable
-              onPress={() => setViewMode('list')}
-              style={[styles.backToListButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            >
-              <Ionicons color={colors.primary} name="chevron-back" size={19} />
-              <Text style={[styles.backToListText, { color: colors.text }]}>予定一覧に戻る</Text>
-            </Pressable>
-
-            <View style={[styles.calendarPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.calendarHeader}>
-                <View>
-                  <Text style={[styles.calendarTitle, { color: colors.text }]}>今後365日</Text>
-                  <Text style={[styles.calendarSubtitle, { color: colors.muted }]}>前月/次月で移動。右スワイプで一覧へ戻れます。</Text>
-                </View>
-                <Ionicons color={colors.primary} name="calendar-number-outline" size={24} />
-              </View>
-              {currentMonth ? (
-                <View style={styles.monthBlock}>
-                  <View style={styles.monthNav}>
-                    <Pressable
-                      disabled={currentMonthIndex <= 0}
-                      onPress={() => setCurrentMonthIndex((index) => Math.max(0, index - 1))}
-                      style={[styles.monthNavButton, { borderColor: colors.border, opacity: currentMonthIndex <= 0 ? 0.4 : 1 }]}
-                    >
-                      <Ionicons color={colors.text} name="chevron-back" size={18} />
-                    </Pressable>
-                    <Text style={[styles.monthTitle, { color: colors.text }]}>{currentMonth.label}</Text>
-                    <Pressable
-                      disabled={currentMonthIndex >= calendarMonths.length - 1}
-                      onPress={() => setCurrentMonthIndex((index) => Math.min(calendarMonths.length - 1, index + 1))}
-                      style={[styles.monthNavButton, { borderColor: colors.border, opacity: currentMonthIndex >= calendarMonths.length - 1 ? 0.4 : 1 }]}
-                    >
-                      <Ionicons color={colors.text} name="chevron-forward" size={18} />
-                    </Pressable>
-                  </View>
-                  <View style={styles.monthGrid}>
-                    {currentMonth.days.map((day) => {
-                      const count = scheduleDateCounts.get(day.key) ?? 0;
-                      return (
-                        <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
-                          <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
-                          <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
-                          <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-            </View>
-
-            {groupedSchedule.map(([dateLabel, items]) => (
-              <View key={dateLabel} style={styles.dateGroup}>
-                <View style={[styles.dateGroupHeader, { backgroundColor: colors.elevated }]}>
-                  <Ionicons color={colors.primary} name="time-outline" size={15} />
-                  <Text style={[styles.dateText, { color: colors.text }]}>{dateLabel}</Text>
-                  <Text style={[styles.dateCount, { color: colors.muted }]}>{items.length}件</Text>
-                </View>
-                {items.map((item) => (
-                  <ScheduleItem
-                    key={item.id}
-                    item={item}
-                    onDecrease={() => updateQuantity(item.id, -1)}
-                    onIncrease={() => updateQuantity(item.id, 1)}
-                    onMarkOwned={() => markOwned(item)}
-                    onPress={() => setSelected(item)}
-                    onRemove={() => removeGoods(item.id)}
-                    onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
-                  />
-                ))}
-              </View>
-            ))}
-          </Animated.View>
-        )}
+        {scheduleGoods.map((item) => (
+          <ScheduleItem
+            key={item.id}
+            item={item}
+            onDecrease={() => updateQuantity(item.id, -1)}
+            onIncrease={() => updateQuantity(item.id, 1)}
+            onMarkOwned={() => markOwned(item)}
+            onPress={() => setSelected(item)}
+            onRemove={() => removeGoods(item.id)}
+            onToggleFavorite={() => updateGoods(item.id, { ...item, favorite: !item.favorite })}
+          />
+        ))}
         {!scheduleGoods.length ? (
           <View style={[styles.empty, { borderColor: colors.border }]}>
             <Ionicons color={colors.muted} name="calendar-clear-outline" size={42} />
