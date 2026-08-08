@@ -84,7 +84,7 @@ export default function ScheduleScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Pressable
-          onPress={() => router.push('/(tabs)/calendar')}
+          onPress={() => router.push('/(tabs)/calendar?from=schedule')}
           style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
         >
           <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>

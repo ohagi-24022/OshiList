@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,39 +12,8 @@ import { useAppTheme } from '../../src/store/ThemeContext';
 
 const eventStatuses = ['wanted', 'reserved', 'ordered', 'shipped'];
 
-function getDateKey(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getYearDays() {
-  const today = new Date();
-  return Array.from({ length: 365 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-    return {
-      key: getDateKey(date),
-      day: date.getDate(),
-      monthKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-      monthLabel: date.toLocaleDateString('ja-JP', { month: 'long', year: 'numeric' }),
-      weekday: date.toLocaleDateString('ja-JP', { weekday: 'short' }),
-    };
-  });
-}
-
-function groupCalendarDays(days: ReturnType<typeof getYearDays>) {
-  const groups = new Map<string, { label: string; days: typeof days }>();
-  days.forEach((day) => {
-    const group = groups.get(day.monthKey) ?? { label: day.monthLabel, days: [] };
-    group.days.push(day);
-    groups.set(day.monthKey, group);
-  });
-  return Array.from(groups.entries()).map(([key, group]) => ({ key, ...group }));
-}
-
 export default function EventScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { addGoods, goods, updateGoods, updateQuantity, removeGoods } = useGoods();
   const { events, selectedEventId, setSelectedEventId, addEvent, updateEvent, removeEvent } = useEvents();
@@ -54,7 +24,6 @@ export default function EventScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [screenMode, setScreenMode] = useState<'list' | 'addGoods'>('list');
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
 
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
   const eventGoods = useMemo(
@@ -62,16 +31,6 @@ export default function EventScreen() {
     [goods, selectedEvent?.id],
   );
   const totalQuantity = eventGoods.reduce((sum, item) => sum + item.quantity, 0);
-  const yearDays = useMemo(() => getYearDays(), []);
-  const calendarMonths = useMemo(() => groupCalendarDays(yearDays), [yearDays]);
-  const currentMonth = calendarMonths[currentMonthIndex];
-  const eventDateCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    events.forEach((event) => {
-      if (event.date) counts.set(event.date, (counts.get(event.date) ?? 0) + 1);
-    });
-    return counts;
-  }, [events]);
 
   const resetForm = () => {
     setName('');
@@ -183,44 +142,19 @@ export default function EventScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.calendarHeader}>
-            <Text style={[styles.panelTitle, { color: colors.text }]}>イベントカレンダー</Text>
-            <View style={styles.monthNav}>
-              <Pressable
-                disabled={currentMonthIndex <= 0}
-                onPress={() => setCurrentMonthIndex((index) => Math.max(0, index - 1))}
-                style={[styles.monthNavButton, { borderColor: colors.border, opacity: currentMonthIndex <= 0 ? 0.4 : 1 }]}
-              >
-                <Ionicons color={colors.text} name="chevron-back" size={18} />
-              </Pressable>
-              <Pressable
-                disabled={currentMonthIndex >= calendarMonths.length - 1}
-                onPress={() => setCurrentMonthIndex((index) => Math.min(calendarMonths.length - 1, index + 1))}
-                style={[styles.monthNavButton, { borderColor: colors.border, opacity: currentMonthIndex >= calendarMonths.length - 1 ? 0.4 : 1 }]}
-              >
-                <Ionicons color={colors.text} name="chevron-forward" size={18} />
-              </Pressable>
-            </View>
+        <Pressable
+          onPress={() => router.push('/(tabs)/calendar?from=event')}
+          style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
           </View>
-          {currentMonth ? (
-            <>
-              <Text style={[styles.monthTitle, { color: colors.text }]}>{currentMonth.label}</Text>
-              <View style={styles.monthGrid}>
-                {currentMonth.days.map((day) => {
-                  const count = eventDateCounts.get(day.key) ?? 0;
-                  return (
-                    <View key={day.key} style={[styles.dayCell, { backgroundColor: count ? colors.primary : colors.elevated }]}>
-                      <Text style={[styles.weekdayText, { color: count ? '#ffffff' : colors.muted }]}>{day.weekday}</Text>
-                      <Text style={[styles.dayText, { color: count ? '#ffffff' : colors.text }]}>{day.day}</Text>
-                      <Text style={[styles.dayCountText, { color: count ? '#ffffff' : colors.muted }]}>{count ? `${count}件` : '-'}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
-        </View>
+          <View style={styles.calendarLinkText}>
+            <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
+            <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>イベントと予定を同じカレンダータブで確認します。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={20} />
+        </Pressable>
 
         {!!events.length && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventChips}>
@@ -316,6 +250,19 @@ const styles = StyleSheet.create({
   primaryText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
   secondaryButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 7, height: 42, justifyContent: 'center' },
   secondaryText: { fontSize: 13, fontWeight: '900' },
+  calendarLink: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 66,
+    padding: 12,
+  },
+  calendarLinkIcon: { alignItems: 'center', borderRadius: 999, height: 42, justifyContent: 'center', width: 42 },
+  calendarLinkText: { flex: 1 },
+  calendarLinkTitle: { fontSize: 15, fontWeight: '900' },
+  calendarLinkSubtitle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   eventChips: { gap: 8 },
   eventChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 36, justifyContent: 'center', paddingHorizontal: 12 },
   eventChipText: { fontSize: 12, fontWeight: '900' },
@@ -323,15 +270,6 @@ const styles = StyleSheet.create({
   eventHeaderText: { flex: 1 },
   eventMeta: { fontSize: 12, fontWeight: '800', lineHeight: 18 },
   iconButton: { alignItems: 'center', height: 38, justifyContent: 'center', width: 38 },
-  calendarHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  monthNav: { flexDirection: 'row', gap: 8 },
-  monthNavButton: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 34, justifyContent: 'center', width: 34 },
-  monthTitle: { fontSize: 15, fontWeight: '900' },
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dayCell: { alignItems: 'center', borderRadius: 8, justifyContent: 'center', minHeight: 58, paddingVertical: 6, width: 42 },
-  weekdayText: { fontSize: 10, fontWeight: '900' },
-  dayText: { fontSize: 18, fontWeight: '900', marginTop: 2 },
-  dayCountText: { fontSize: 10, fontWeight: '900', marginTop: 2 },
   empty: { alignItems: 'center', borderRadius: 8, borderStyle: 'dashed', borderWidth: 1, padding: 24 },
   emptyTitle: { fontSize: 17, fontWeight: '900', marginTop: 12 },
   emptyText: { fontSize: 13, lineHeight: 19, marginTop: 8, textAlign: 'center' },

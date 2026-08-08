@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMemo, useRef, useState } from 'react';
+import { Animated, GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
@@ -59,11 +60,15 @@ function compareByDate(a: Goods, b: Goods) {
 }
 
 export default function CalendarScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ from?: string }>();
   const { colors } = useAppTheme();
   const { events } = useEvents();
   const { goods, removeGoods, updateGoods, updateQuantity } = useGoods();
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
   const [selected, setSelected] = useState<Goods | null>(null);
+  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number } | null>(null);
+  const swipeTranslateX = useRef(new Animated.Value(0)).current;
 
   const scheduleGoods = useMemo(
     () => goods.filter((item) => scheduleStatuses.includes(item.status) && item.quantity > 0).sort(compareByDate),
@@ -101,8 +106,57 @@ export default function CalendarScreen() {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
   };
 
+  const goToSchedule = () => router.push('/(tabs)/schedule');
+  const goToEvent = () => router.push('/(tabs)/event');
+  const goBackToSource = () => {
+    if (params.from === 'event') {
+      goToEvent();
+      return;
+    }
+    if (params.from === 'schedule') {
+      goToSchedule();
+      return;
+    }
+    router.back();
+  };
+  const beginSwipe = (event: GestureResponderEvent) => {
+    setSwipeStart({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
+  };
+  const moveSwipe = (event: GestureResponderEvent) => {
+    if (!swipeStart) return;
+    const dx = event.nativeEvent.pageX - swipeStart.x;
+    const dy = event.nativeEvent.pageY - swipeStart.y;
+    if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      swipeTranslateX.setValue(Math.min(dx, 160));
+    }
+  };
+  const finishSwipe = (event: GestureResponderEvent) => {
+    if (!swipeStart) return;
+    const dx = event.nativeEvent.pageX - swipeStart.x;
+    const dy = event.nativeEvent.pageY - swipeStart.y;
+    setSwipeStart(null);
+    if (dx > 90 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      Animated.timing(swipeTranslateX, { duration: 180, toValue: 420, useNativeDriver: true }).start(() => {
+        swipeTranslateX.setValue(0);
+        goBackToSource();
+      });
+      return;
+    }
+    Animated.spring(swipeTranslateX, { bounciness: 0, speed: 18, toValue: 0, useNativeDriver: true }).start();
+  };
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
+      <Animated.View
+        onTouchCancel={() => {
+          setSwipeStart(null);
+          Animated.spring(swipeTranslateX, { bounciness: 0, speed: 18, toValue: 0, useNativeDriver: true }).start();
+        }}
+        onTouchEnd={finishSwipe}
+        onTouchMove={moveSwipe}
+        onTouchStart={beginSwipe}
+        style={[styles.animatedContent, { transform: [{ translateX: swipeTranslateX }] }]}
+      >
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.titleRow}>
           <View>
@@ -113,6 +167,17 @@ export default function CalendarScreen() {
             <Ionicons color={colors.primary} name="calendar-number-outline" size={18} />
             <Text style={[styles.summaryText, { color: colors.text }]}>{scheduleGoods.length + events.length}件</Text>
           </View>
+        </View>
+
+        <View style={styles.returnRow}>
+          <Pressable onPress={goToSchedule} style={[styles.returnButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons color={colors.primary} name="calendar-outline" size={17} />
+            <Text style={[styles.returnButtonText, { color: colors.text }]}>予定へ</Text>
+          </Pressable>
+          <Pressable onPress={goToEvent} style={[styles.returnButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons color={colors.primary} name="sparkles-outline" size={17} />
+            <Text style={[styles.returnButtonText, { color: colors.text }]}>イベントへ</Text>
+          </Pressable>
         </View>
 
         <View style={[styles.calendarPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -192,6 +257,7 @@ export default function CalendarScreen() {
           </View>
         ) : null}
       </ScrollView>
+      </Animated.View>
 
       <Modal animationType="slide" visible={!!selectedItem} onRequestClose={() => setSelected(null)}>
         <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -225,12 +291,16 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  animatedContent: { flex: 1 },
   content: { gap: 14, padding: 18, paddingBottom: 96 },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 12, marginTop: 2 },
   summaryBadge: { alignItems: 'center', borderRadius: 999, borderWidth: 1, flexDirection: 'row', gap: 6, height: 34, paddingHorizontal: 12 },
   summaryText: { fontSize: 12, fontWeight: '900' },
+  returnRow: { flexDirection: 'row', gap: 8 },
+  returnButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 7, height: 44, justifyContent: 'center' },
+  returnButtonText: { fontSize: 13, fontWeight: '900' },
   calendarPanel: { borderRadius: 8, borderWidth: 1, padding: 12 },
   calendarHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   monthNavButton: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 36, justifyContent: 'center', width: 36 },
