@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useScrollToTop } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -30,6 +31,7 @@ export default function ScheduleScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
   const { goods, removeGoods, updateGoods, updateQuantity } = useGoods();
+  const scrollRef = useRef<ScrollView>(null);
   const [selectedStatus, setSelectedStatus] = useState<GoodsStatus | 'all'>('all');
   const [selected, setSelected] = useState<Goods | null>(null);
 
@@ -54,6 +56,7 @@ export default function ScheduleScreen() {
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
   };
+  useScrollToTop(scrollRef);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -82,7 +85,7 @@ export default function ScheduleScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Pressable
           onPress={() => router.push('/(tabs)/calendar?from=schedule')}
           style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}

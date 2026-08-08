@@ -200,6 +200,7 @@ export default function HomeScreen() {
       addListener: (eventName: 'tabPress', callback: () => void) => () => void;
     };
     const unsubscribe = tabNavigation.addListener('tabPress', () => {
+      setScreenMode('collection');
       lastScrollYRef.current = 0;
       headerHiddenRef.current = false;
       Animated.timing(headerTranslateY, {
@@ -207,6 +208,7 @@ export default function HomeScreen() {
         toValue: 0,
         useNativeDriver: true,
       }).start();
+      requestAnimationFrame(() => listRef.current?.scrollToOffset({ animated: true, offset: 0 }));
     });
     return unsubscribe;
   }, [headerTranslateY, navigation]);

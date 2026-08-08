@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useScrollToTop } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { Animated, GestureResponderEvent, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -65,6 +66,7 @@ export default function CalendarScreen() {
   const { colors } = useAppTheme();
   const { events } = useEvents();
   const { goods, removeGoods, updateGoods, updateQuantity } = useGoods();
+  const scrollRef = useRef<ScrollView>(null);
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
   const [selected, setSelected] = useState<Goods | null>(null);
   const [swipeStart, setSwipeStart] = useState<{ x: number; y: number } | null>(null);
@@ -105,6 +107,7 @@ export default function CalendarScreen() {
   const markOwned = async (item: Goods) => {
     await updateGoods(item.id, { ...item, status: 'owned', quantity: Math.max(1, item.quantity) });
   };
+  useScrollToTop(scrollRef);
 
   const goToSchedule = () => router.push('/(tabs)/schedule');
   const goToEvent = () => router.push('/(tabs)/event');
@@ -147,6 +150,21 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
+      {params.from === 'event' ? (
+        <SourcePreview
+          icon="sparkles-outline"
+          title="イベント"
+          subtitle="イベントごとに購入予定リストを管理"
+          count={`${events.length}件`}
+        />
+      ) : params.from === 'schedule' ? (
+        <SourcePreview
+          icon="calendar-outline"
+          title="予定"
+          subtitle="予約・発送・到着待ちをまとめて確認"
+          count={`${scheduleGoods.length}件`}
+        />
+      ) : null}
       <Animated.View
         onTouchCancel={() => {
           setSwipeStart(null);
@@ -155,9 +173,9 @@ export default function CalendarScreen() {
         onTouchEnd={finishSwipe}
         onTouchMove={moveSwipe}
         onTouchStart={beginSwipe}
-        style={[styles.animatedContent, { transform: [{ translateX: swipeTranslateX }] }]}
+        style={[styles.animatedContent, { backgroundColor: colors.background, transform: [{ translateX: swipeTranslateX }] }]}
       >
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.titleRow}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>カレンダー</Text>
@@ -289,15 +307,51 @@ export default function CalendarScreen() {
   );
 }
 
+function SourcePreview({
+  count,
+  icon,
+  subtitle,
+  title,
+}: {
+  count: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  subtitle: string;
+  title: string;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <View pointerEvents="none" style={[styles.sourcePreview, { backgroundColor: colors.background }]}>
+      <View style={styles.titleRow}>
+        <View>
+          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>{subtitle}</Text>
+        </View>
+        <View style={[styles.summaryBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons color={colors.primary} name={icon} size={18} />
+          <Text style={[styles.summaryText, { color: colors.text }]}>{count}</Text>
+        </View>
+      </View>
+      <View style={[styles.previewPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.previewTitle, { color: colors.text }]}>スワイプで戻ります</Text>
+        <Text style={[styles.previewText, { color: colors.muted }]}>前の画面へ戻る動きを表示しています。</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   animatedContent: { flex: 1 },
+  sourcePreview: { bottom: 0, left: 0, padding: 18, paddingBottom: 96, position: 'absolute', right: 0, top: 0 },
   content: { gap: 14, padding: 18, paddingBottom: 96 },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 12, marginTop: 2 },
   summaryBadge: { alignItems: 'center', borderRadius: 999, borderWidth: 1, flexDirection: 'row', gap: 6, height: 34, paddingHorizontal: 12 },
   summaryText: { fontSize: 12, fontWeight: '900' },
+  previewPanel: { borderRadius: 8, borderWidth: 1, marginTop: 14, padding: 14 },
+  previewTitle: { fontSize: 16, fontWeight: '900' },
+  previewText: { fontSize: 12, fontWeight: '800', marginTop: 4 },
   returnRow: { flexDirection: 'row', gap: 8 },
   returnButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 7, height: 44, justifyContent: 'center' },
   returnButtonText: { fontSize: 13, fontWeight: '900' },

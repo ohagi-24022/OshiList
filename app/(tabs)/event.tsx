@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoodsCard } from '../../src/components/GoodsCard';
@@ -14,9 +15,13 @@ const eventStatuses = ['wanted', 'reserved', 'ordered', 'shipped'];
 
 export default function EventScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { colors } = useAppTheme();
   const { addGoods, goods, updateGoods, updateQuantity, removeGoods } = useGoods();
   const { events, selectedEventId, setSelectedEventId, addEvent, updateEvent, removeEvent } = useEvents();
+  const scrollRef = useRef<ScrollView>(null);
+  const addGoodsTranslateX = useRef(new Animated.Value(Dimensions.get('window').width)).current;
+  const addGoodsTouchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [venue, setVenue] = useState('');
@@ -31,6 +36,29 @@ export default function EventScreen() {
     [goods, selectedEvent?.id],
   );
   const totalQuantity = eventGoods.reduce((sum, item) => sum + item.quantity, 0);
+  useScrollToTop(scrollRef);
+
+  useEffect(() => {
+    const tabNavigation = navigation as unknown as {
+      addListener: (eventName: 'tabPress', callback: () => void) => () => void;
+    };
+    const unsubscribe = tabNavigation.addListener('tabPress', () => {
+      if (screenMode !== 'list') {
+        setScreenMode('list');
+        addGoodsTranslateX.setValue(Dimensions.get('window').width);
+        requestAnimationFrame(() => scrollRef.current?.scrollTo({ animated: true, y: 0 }));
+        return;
+      }
+      scrollRef.current?.scrollTo({ animated: true, y: 0 });
+    });
+    return unsubscribe;
+  }, [addGoodsTranslateX, navigation, screenMode]);
+
+  useEffect(() => {
+    if (screenMode !== 'addGoods') return;
+    addGoodsTranslateX.setValue(Dimensions.get('window').width);
+    Animated.timing(addGoodsTranslateX, { duration: 190, toValue: 0, useNativeDriver: true }).start();
+  }, [addGoodsTranslateX, screenMode]);
 
   const resetForm = () => {
     setName('');
@@ -77,38 +105,54 @@ export default function EventScreen() {
     ]);
   };
 
-  if (screenMode === 'addGoods' && selectedEvent) {
-    return (
-      <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.subHeader, { borderBottomColor: colors.border }]}>
-          <Pressable onPress={() => setScreenMode('list')} style={styles.iconButton}>
-            <Ionicons color={colors.text} name="chevron-back" size={24} />
-          </Pressable>
-          <Text style={[styles.subHeaderTitle, { color: colors.text }]}>購入予定を追加</Text>
-          <View style={styles.iconButton} />
-        </View>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.panelTitle, { color: colors.text }]}>{selectedEvent.name}</Text>
-            <Text style={[styles.eventMeta, { color: colors.muted }]}>このイベントの購入リストに追加します。</Text>
-          </View>
-          <ManualGoodsForm
-            initialStatus="wanted"
-            initialEventId={selectedEvent.id}
-            allowedStatuses={['wanted', 'reserved', 'ordered', 'shipped']}
-            onSubmit={async (input) => {
-              await addGoods(input);
-              setScreenMode('list');
-            }}
-          />
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
+  const closeAddGoods = () => {
+    Animated.timing(addGoodsTranslateX, {
+      duration: 190,
+      toValue: Dimensions.get('window').width,
+      useNativeDriver: true,
+    }).start(() => setScreenMode('list'));
+  };
+
+  const rememberAddGoodsTouchStart = (event: GestureResponderEvent) => {
+    addGoodsTouchStartRef.current = {
+      x: event.nativeEvent.pageX,
+      y: event.nativeEvent.pageY,
+      time: Date.now(),
+    };
+  };
+
+  const moveAddGoodsWithSwipe = (event: GestureResponderEvent) => {
+    const start = addGoodsTouchStartRef.current;
+    if (!start) return;
+    const dx = event.nativeEvent.pageX - start.x;
+    const dy = event.nativeEvent.pageY - start.y;
+    if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      addGoodsTranslateX.setValue(Math.min(dx, 150));
+    }
+  };
+
+  const finishAddGoodsSwipe = (event: GestureResponderEvent) => {
+    const start = addGoodsTouchStartRef.current;
+    addGoodsTouchStartRef.current = null;
+    if (!start) return;
+    const dx = event.nativeEvent.pageX - start.x;
+    const dy = event.nativeEvent.pageY - start.y;
+    const fastEnough = Date.now() - start.time < 700;
+    if (dx > 66 && Math.abs(dx) > Math.abs(dy) * 1.25 && fastEnough) {
+      closeAddGoods();
+      return;
+    }
+    Animated.spring(addGoodsTranslateX, {
+      damping: 18,
+      stiffness: 220,
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.titleRow}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>イベント</Text>
@@ -217,12 +261,70 @@ export default function EventScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      {screenMode === 'addGoods' && selectedEvent ? (
+        <Animated.View
+          onTouchEnd={finishAddGoodsSwipe}
+          onTouchMove={moveAddGoodsWithSwipe}
+          onTouchStart={rememberAddGoodsTouchStart}
+          style={[
+            styles.addGoodsOverlay,
+            {
+              backgroundColor: colors.background,
+              transform: [{ translateX: addGoodsTranslateX }],
+            },
+          ]}
+        >
+          <View style={[styles.subHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={closeAddGoods} style={styles.iconButton}>
+              <Ionicons color={colors.text} name="chevron-back" size={24} />
+            </Pressable>
+            <Text style={[styles.subHeaderTitle, { color: colors.text }]}>購入予定を追加</Text>
+            <View style={styles.iconButton} />
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            onTouchEnd={finishAddGoodsSwipe}
+            onTouchMove={moveAddGoodsWithSwipe}
+            onTouchStart={rememberAddGoodsTouchStart}
+          >
+            <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.panelTitle, { color: colors.text }]}>{selectedEvent.name}</Text>
+              <Text style={[styles.eventMeta, { color: colors.muted }]}>このイベントの購入リストに追加します。</Text>
+            </View>
+            <ManualGoodsForm
+              initialStatus="wanted"
+              initialEventId={selectedEvent.id}
+              allowedStatuses={['wanted', 'reserved', 'ordered', 'shipped']}
+              onSubmit={async (input) => {
+                await addGoods(input);
+                closeAddGoods();
+              }}
+            />
+          </ScrollView>
+        </Animated.View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  addGoodsOverlay: {
+    borderBottomLeftRadius: 10,
+    borderTopLeftRadius: 10,
+    bottom: 0,
+    elevation: 10,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#000000',
+    shadowOffset: { height: 0, width: -8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    top: 0,
+  },
   content: { gap: 14, padding: 18, paddingBottom: 96 },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   subHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', height: 54, justifyContent: 'space-between', paddingHorizontal: 12 },
