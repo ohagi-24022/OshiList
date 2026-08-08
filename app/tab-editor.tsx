@@ -39,7 +39,7 @@ export default function TabEditorScreen() {
       return;
     }
     await updateSettings({ utilityTabs: draftTabs });
-    router.replace('/(tabs)/settings');
+    router.dismissTo('/(tabs)/settings');
   };
 
   return (

@@ -214,13 +214,13 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
             </Text>
           </View>
           <View style={styles.headerActions}>
-            {embedded ? (
+            {embedded || onShowCollection ? (
               <Pressable
                 onPress={onShowCollection}
                 style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}
               >
                 <Ionicons color={colors.primary} name="albums-outline" size={18} />
-                <Text style={[styles.summaryText, { color: colors.text }]}>一覧</Text>
+                <Text style={[styles.summaryText, { color: colors.text }]}>{embedded ? '一覧' : 'コレクション'}</Text>
               </Pressable>
             ) : null}
             <Pressable
