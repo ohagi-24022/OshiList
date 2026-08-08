@@ -9,6 +9,15 @@ import { useGoods } from '../../src/store/GoodsContext';
 import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 
+const utilityTabLabels: Record<string, string> = {
+  calendar: 'カレンダー',
+  collection: 'コレクション',
+  event: 'イベント',
+  manage: '管理',
+  mypage: 'マイページ',
+  schedule: '予定',
+};
+
 export default function SettingsScreen() {
   const { colors, presets, setPreset, customPresets, deleteCustomPreset } = useAppTheme();
   const { settings, updateSettings } = useAppSettings();
@@ -187,7 +196,9 @@ export default function SettingsScreen() {
             <Ionicons color={colors.primary} name="options-outline" size={20} />
             <View style={styles.editTabsText}>
               <Text style={[styles.settingTitle, { color: colors.text }]}>表示タブを編集</Text>
-              <Text style={[styles.settingHelp, { color: colors.muted }]}>{settings.utilityTabs.join(' / ')}</Text>
+              <Text style={[styles.settingHelp, { color: colors.muted }]}>
+                {settings.utilityTabs.map((tab) => utilityTabLabels[tab] ?? tab).join(' / ')}
+              </Text>
             </View>
             <Ionicons color={colors.muted} name="chevron-forward" size={18} />
           </Pressable>

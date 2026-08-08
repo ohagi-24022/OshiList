@@ -19,16 +19,20 @@ const defaultSettings: AppSettings = {
   groupRandomGoods: false,
   utilityTabs: ['collection', 'schedule'],
 };
+const allowedUtilityTabs = new Set(['collection', 'schedule', 'calendar', 'manage', 'mypage', 'event']);
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
 function readStoredSettings(stored: string): AppSettings {
   try {
     const parsed = JSON.parse(stored) as Partial<AppSettings>;
+    const utilityTabs = Array.isArray(parsed.utilityTabs)
+      ? parsed.utilityTabs.filter((tab) => allowedUtilityTabs.has(tab)).slice(0, 2)
+      : [];
     return {
       ...defaultSettings,
       ...parsed,
-      utilityTabs: Array.isArray(parsed.utilityTabs) && parsed.utilityTabs.length === 2 ? parsed.utilityTabs : defaultSettings.utilityTabs,
+      utilityTabs: utilityTabs.length === 2 ? utilityTabs : defaultSettings.utilityTabs,
     };
   } catch {
     return defaultSettings;
@@ -47,7 +51,10 @@ export function AppSettingsProvider({ children }: PropsWithChildren) {
   }, []);
 
   const updateSettings = async (patch: Partial<AppSettings>) => {
-    const nextSettings = { ...settings, ...patch };
+    const utilityTabs = patch.utilityTabs
+      ? patch.utilityTabs.filter((tab) => allowedUtilityTabs.has(tab)).slice(0, 2)
+      : settings.utilityTabs;
+    const nextSettings = { ...settings, ...patch, utilityTabs: utilityTabs.length === 2 ? utilityTabs : settings.utilityTabs };
     setSettings(nextSettings);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings));
   };

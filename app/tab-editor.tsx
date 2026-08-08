@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSettings } from '../src/store/AppSettingsContext';
 import { useAppTheme } from '../src/store/ThemeContext';
 
+type UtilityTabId = 'collection' | 'schedule' | 'calendar' | 'manage' | 'mypage' | 'event';
+
 const tabOptions = [
   { id: 'collection', label: 'コレクション', icon: 'albums-outline' },
   { id: 'schedule', label: '予定', icon: 'calendar-outline' },
@@ -19,9 +21,11 @@ const tabOptions = [
 export default function TabEditorScreen() {
   const { colors } = useAppTheme();
   const { settings, updateSettings } = useAppSettings();
-  const [draftTabs, setDraftTabs] = useState<string[]>(settings.utilityTabs);
+  const [draftTabs, setDraftTabs] = useState<UtilityTabId[]>(
+    settings.utilityTabs.filter((tab): tab is UtilityTabId => tabOptions.some((option) => option.id === tab)).slice(0, 2),
+  );
 
-  const toggleTab = (id: string) => {
+  const toggleTab = (id: UtilityTabId) => {
     setDraftTabs((current) => {
       if (current.includes(id)) return current.filter((value) => value !== id);
       if (current.length >= 2) return [current[1], id];
@@ -35,7 +39,7 @@ export default function TabEditorScreen() {
       return;
     }
     await updateSettings({ utilityTabs: draftTabs });
-    router.back();
+    router.replace('/(tabs)/settings');
   };
 
   return (
@@ -91,7 +95,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', height: 54, justifyContent: 'space-between', paddingHorizontal: 12 },
   iconButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
   headerTitle: { fontSize: 17, fontWeight: '900' },
-  content: { gap: 16, padding: 18 },
+  content: { flex: 1, gap: 16, padding: 18 },
   title: { fontSize: 24, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   optionGrid: { gap: 10 },

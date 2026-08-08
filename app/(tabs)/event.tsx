@@ -28,7 +28,7 @@ export default function EventScreen() {
   const [memo, setMemo] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [screenMode, setScreenMode] = useState<'list' | 'addGoods'>('list');
+  const [screenMode, setScreenMode] = useState<'list' | 'addGoods' | 'editEvent'>('list');
 
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
   const eventGoods = useMemo(
@@ -44,8 +44,8 @@ export default function EventScreen() {
     };
     const unsubscribe = tabNavigation.addListener('tabPress', () => {
       if (screenMode !== 'list') {
-        setScreenMode('list');
         addGoodsTranslateX.setValue(Dimensions.get('window').width);
+        setScreenMode('list');
         requestAnimationFrame(() => scrollRef.current?.scrollTo({ animated: true, y: 0 }));
         return;
       }
@@ -55,7 +55,7 @@ export default function EventScreen() {
   }, [addGoodsTranslateX, navigation, screenMode]);
 
   useEffect(() => {
-    if (screenMode !== 'addGoods') return;
+    if (screenMode !== 'addGoods' && screenMode !== 'editEvent') return;
     addGoodsTranslateX.setValue(Dimensions.get('window').width);
     Animated.timing(addGoodsTranslateX, { duration: 190, toValue: 0, useNativeDriver: true }).start();
   }, [addGoodsTranslateX, screenMode]);
@@ -80,7 +80,8 @@ export default function EventScreen() {
     setDate(selectedEvent.date);
     setVenue(selectedEvent.venue);
     setMemo(selectedEvent.memo);
-    setFormOpen(true);
+    setFormOpen(false);
+    setScreenMode('editEvent');
   };
 
   const saveEvent = async () => {
@@ -90,11 +91,12 @@ export default function EventScreen() {
     }
     if (editingEventId) {
       await updateEvent(editingEventId, { name: name.trim(), date: date.trim(), venue: venue.trim(), memo: memo.trim() });
+      closePanel();
     } else {
       await addEvent({ name: name.trim(), date: date.trim(), venue: venue.trim(), memo: memo.trim() });
+      setFormOpen(false);
     }
     resetForm();
-    setFormOpen(false);
   };
 
   const confirmRemoveEvent = () => {
@@ -105,12 +107,15 @@ export default function EventScreen() {
     ]);
   };
 
-  const closeAddGoods = () => {
+  const closePanel = () => {
     Animated.timing(addGoodsTranslateX, {
       duration: 190,
       toValue: Dimensions.get('window').width,
       useNativeDriver: true,
-    }).start(() => setScreenMode('list'));
+    }).start(() => {
+      setScreenMode('list');
+      resetForm();
+    });
   };
 
   const rememberAddGoodsTouchStart = (event: GestureResponderEvent) => {
@@ -139,7 +144,7 @@ export default function EventScreen() {
     const dy = event.nativeEvent.pageY - start.y;
     const fastEnough = Date.now() - start.time < 700;
     if (dx > 66 && Math.abs(dx) > Math.abs(dy) * 1.25 && fastEnough) {
-      closeAddGoods();
+      closePanel();
       return;
     }
     Animated.spring(addGoodsTranslateX, {
@@ -185,20 +190,6 @@ export default function EventScreen() {
             </Pressable>
           </View>
         ) : null}
-
-        <Pressable
-          onPress={() => router.push('/(tabs)/calendar?from=event')}
-          style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
-            <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
-          </View>
-          <View style={styles.calendarLinkText}>
-            <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
-            <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>イベントと予定を同じカレンダータブで確認します。</Text>
-          </View>
-          <Ionicons color={colors.muted} name="chevron-forward" size={20} />
-        </Pressable>
 
         {!!events.length && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventChips}>
@@ -260,6 +251,20 @@ export default function EventScreen() {
             <Text style={[styles.emptyText, { color: colors.muted }]}>登録タブのイベント、またはこの画面から購入予定を追加できます。</Text>
           </View>
         ) : null}
+
+        <Pressable
+          onPress={() => router.push('/(tabs)/calendar?from=event')}
+          style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
+          </View>
+          <View style={styles.calendarLinkText}>
+            <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
+            <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>イベントと予定を同じカレンダータブで確認します。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={20} />
+        </Pressable>
       </ScrollView>
 
       {screenMode === 'addGoods' && selectedEvent ? (
@@ -276,7 +281,7 @@ export default function EventScreen() {
           ]}
         >
           <View style={[styles.subHeader, { borderBottomColor: colors.border }]}>
-            <Pressable onPress={closeAddGoods} style={styles.iconButton}>
+            <Pressable onPress={closePanel} style={styles.iconButton}>
               <Ionicons color={colors.text} name="chevron-back" size={24} />
             </Pressable>
             <Text style={[styles.subHeaderTitle, { color: colors.text }]}>購入予定を追加</Text>
@@ -299,9 +304,53 @@ export default function EventScreen() {
               allowedStatuses={['wanted', 'reserved', 'ordered', 'shipped']}
               onSubmit={async (input) => {
                 await addGoods(input);
-                closeAddGoods();
+                closePanel();
               }}
             />
+          </ScrollView>
+        </Animated.View>
+      ) : null}
+
+      {screenMode === 'editEvent' ? (
+        <Animated.View
+          onTouchEnd={finishAddGoodsSwipe}
+          onTouchMove={moveAddGoodsWithSwipe}
+          onTouchStart={rememberAddGoodsTouchStart}
+          style={[
+            styles.addGoodsOverlay,
+            {
+              backgroundColor: colors.background,
+              transform: [{ translateX: addGoodsTranslateX }],
+            },
+          ]}
+        >
+          <View style={[styles.subHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={closePanel} style={styles.iconButton}>
+              <Ionicons color={colors.text} name="chevron-back" size={24} />
+            </Pressable>
+            <Text style={[styles.subHeaderTitle, { color: colors.text }]}>イベント編集</Text>
+            <View style={styles.iconButton} />
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            onTouchEnd={finishAddGoodsSwipe}
+            onTouchMove={moveAddGoodsWithSwipe}
+            onTouchStart={rememberAddGoodsTouchStart}
+          >
+            <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.panelTitle, { color: colors.text }]}>イベント情報</Text>
+              <TextInput value={name} onChangeText={setName} placeholder="イベント名" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+              <View style={styles.twoColumnRow}>
+                <TextInput value={date} onChangeText={setDate} placeholder="開催日 2026-09-15" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput, { backgroundColor: colors.input, color: colors.text }]} />
+                <TextInput value={venue} onChangeText={setVenue} placeholder="会場" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput, { backgroundColor: colors.input, color: colors.text }]} />
+              </View>
+              <TextInput value={memo} onChangeText={setMemo} placeholder="メモ" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
+              <Pressable onPress={saveEvent} style={[styles.primaryButton, { backgroundColor: colors.primary }]}>
+                <Ionicons color="#ffffff" name="save-outline" size={18} />
+                <Text style={styles.primaryText}>イベントを更新</Text>
+              </Pressable>
+            </View>
           </ScrollView>
         </Animated.View>
       ) : null}

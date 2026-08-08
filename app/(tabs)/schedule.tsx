@@ -66,10 +66,14 @@ export default function ScheduleScreen() {
             <Text style={[styles.title, { color: colors.text }]}>予定</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>予約・発送・到着待ちをまとめて確認</Text>
           </View>
-          <View style={[styles.calendarBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable
+            accessibilityLabel="カレンダーを見る"
+            onPress={() => router.push('/(tabs)/calendar?from=schedule')}
+            style={[styles.calendarBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
             <Ionicons color={colors.primary} name="calendar-outline" size={18} />
-            <Text style={[styles.calendarText, { color: colors.text }]}>{scheduleGoods.length}件</Text>
-          </View>
+            <Text style={[styles.calendarText, { color: colors.text }]}>カレンダー</Text>
+          </Pressable>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statusTabs}>
@@ -86,20 +90,6 @@ export default function ScheduleScreen() {
       </View>
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Pressable
-          onPress={() => router.push('/(tabs)/calendar?from=schedule')}
-          style={[styles.calendarLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <View style={[styles.calendarLinkIcon, { backgroundColor: colors.elevated }]}>
-            <Ionicons color={colors.primary} name="calendar-number-outline" size={22} />
-          </View>
-          <View style={styles.calendarLinkText}>
-            <Text style={[styles.calendarLinkTitle, { color: colors.text }]}>カレンダーを見る</Text>
-            <Text style={[styles.calendarLinkSubtitle, { color: colors.muted }]}>カレンダータブで日付ごとに確認します。</Text>
-          </View>
-          <Ionicons color={colors.muted} name="chevron-forward" size={20} />
-        </Pressable>
-
         {scheduleGoods.map((item) => (
           <ScheduleItem
             key={item.id}
