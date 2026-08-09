@@ -238,6 +238,51 @@ def rakuten_item_from_wrapper(wrapper: dict[str, Any]) -> dict[str, Any]:
     return wrapper
 
 
+USED_PRODUCT_KEYWORDS = [
+    "中古",
+    "買取",
+    "開封済",
+    "開封品",
+    "訳あり",
+    "わけあり",
+    "ジャンク",
+    "アウトレット",
+    "リユース",
+    "リサイクル",
+    "used",
+    "pre-owned",
+]
+
+NEW_PRODUCT_HINT_KEYWORDS = [
+    "新品",
+    "予約",
+    "公式",
+    "正規品",
+]
+
+
+def product_quality_score(product_name: str, image_url: str | None = None) -> int:
+    normalized_name = product_name.lower()
+    score = 0
+    if image_url:
+        score += 2
+    if any(keyword.lower() in normalized_name for keyword in NEW_PRODUCT_HINT_KEYWORDS):
+        score += 2
+    if any(keyword.lower() in normalized_name for keyword in USED_PRODUCT_KEYWORDS):
+        score -= 8
+    return score
+
+
+def best_product_candidate(candidates: list[ProductCandidate]) -> ProductCandidate | None:
+    if not candidates:
+        return None
+    ranked = sorted(candidates, key=lambda candidate: product_quality_score(candidate.boxName, candidate.imageUrl), reverse=True)
+    best = ranked[0]
+    if product_quality_score(best.boxName, best.imageUrl) < 0:
+        return None
+    return best
+
+
 async def search_yahoo_item(jan: str) -> ProductCandidate:
     if not YAHOO_APP_ID:
         raise HTTPException(status_code=503, detail="YAHOO_APP_IDが未設定です。")
@@ -246,7 +291,7 @@ async def search_yahoo_item(jan: str) -> ProductCandidate:
         async with httpx.AsyncClient(timeout=12) as client:
             response = await client.get(
                 YAHOO_ENDPOINT,
-                params={"appid": YAHOO_APP_ID, "jan_code": jan, "image_size": 600, "results": 1},
+                params={"appid": YAHOO_APP_ID, "jan_code": jan, "image_size": 600, "results": 10},
             )
     except httpx.RequestError:
         raise HTTPException(status_code=502, detail="Yahoo!ショッピングAPIへ接続できませんでした。")
@@ -258,14 +303,19 @@ async def search_yahoo_item(jan: str) -> ProductCandidate:
     if not hits:
         raise HTTPException(status_code=404, detail="Yahoo!ショッピングで商品が見つかりませんでした。")
 
-    item = hits[0]
-    product_name = item.get("name")
-    if not product_name:
-        raise HTTPException(status_code=404, detail="Yahoo!ショッピングで商品名を取得できませんでした。")
+    candidates: list[ProductCandidate] = []
+    for item in hits:
+        product_name = item.get("name")
+        if not product_name:
+            continue
+        image = item.get("exImage") or item.get("image") or {}
+        image_url = image.get("url") or image.get("medium") or image.get("small")
+        candidates.append(ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="Yahoo!ショッピング"))
 
-    image = item.get("exImage") or item.get("image") or {}
-    image_url = image.get("url") or image.get("medium") or image.get("small")
-    return ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="Yahoo!ショッピング")
+    selected = best_product_candidate(candidates)
+    if not selected:
+        raise HTTPException(status_code=404, detail="Yahoo!ショッピングの候補が中古・買取系に偏っていたため、商品API候補としては採用しませんでした。")
+    return selected
 
 
 async def search_rakuten_item(jan: str) -> ProductCandidate:
@@ -278,7 +328,7 @@ async def search_rakuten_item(jan: str) -> ProductCandidate:
         "applicationId": RAKUTEN_APP_ID,
         "accessKey": RAKUTEN_ACCESS_KEY,
         "keyword": jan,
-        "hits": 1,
+        "hits": 10,
         "format": "json",
         "formatVersion": 2,
     }
@@ -296,12 +346,18 @@ async def search_rakuten_item(jan: str) -> ProductCandidate:
     if not items:
         raise HTTPException(status_code=404, detail="楽天市場で商品が見つかりませんでした。")
 
-    item = rakuten_item_from_wrapper(items[0])
-    product_name = item.get("itemName")
-    if not product_name:
-        raise HTTPException(status_code=404, detail="楽天市場で商品名を取得できませんでした。")
+    candidates: list[ProductCandidate] = []
+    for wrapper in items:
+        item = rakuten_item_from_wrapper(wrapper)
+        product_name = item.get("itemName")
+        if not product_name:
+            continue
+        candidates.append(ProductCandidate(boxName=product_name, imageUrl=first_rakuten_image_url(item), sourceLabel="楽天商品検索"))
 
-    return ProductCandidate(boxName=product_name, imageUrl=first_rakuten_image_url(item), sourceLabel="楽天商品検索")
+    selected = best_product_candidate(candidates)
+    if not selected:
+        raise HTTPException(status_code=404, detail="楽天市場の候補が中古・買取系に偏っていたため、商品API候補としては採用しませんでした。")
+    return selected
 
 
 async def search_yahoo_candidates(query: str, limit: int = 3) -> list[ProductCandidate]:
@@ -328,7 +384,7 @@ async def search_yahoo_candidates(query: str, limit: int = 3) -> list[ProductCan
         image = item.get("exImage") or item.get("image") or {}
         image_url = image.get("url") or image.get("medium") or image.get("small")
         candidates.append(ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="Yahoo!ショッピング"))
-    return candidates
+    return sorted(candidates, key=lambda candidate: product_quality_score(candidate.boxName, candidate.imageUrl), reverse=True)
 
 
 async def search_rakuten_candidates(query: str, limit: int = 3) -> list[ProductCandidate]:
@@ -364,7 +420,7 @@ async def search_rakuten_candidates(query: str, limit: int = 3) -> list[ProductC
         if not product_name:
             continue
         candidates.append(ProductCandidate(boxName=product_name, imageUrl=first_rakuten_image_url(item), sourceLabel="楽天市場"))
-    return candidates
+    return sorted(candidates, key=lambda candidate: product_quality_score(candidate.boxName, candidate.imageUrl), reverse=True)
 
 
 async def search_product_candidates(query: str, provider: str = "auto", limit: int = 3) -> tuple[list[ProductCandidate], list[str]]:
@@ -389,6 +445,9 @@ async def search_product_candidates(query: str, provider: str = "auto", limit: i
             continue
 
         for candidate in provider_candidates:
+            if product_quality_score(candidate.boxName, candidate.imageUrl) < 0:
+                warnings.append(f"{current_provider}: 中古・買取系の候補を除外しました: {candidate.boxName}")
+                continue
             key = candidate.boxName.strip()
             if key and key not in seen:
                 seen.add(key)
