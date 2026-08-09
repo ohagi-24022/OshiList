@@ -17,13 +17,12 @@ YAHOO_APP_ID = os.getenv("YAHOO_APP_ID")
 RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
 RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
-GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID") or os.getenv("GOOGLE_CSE_ID")
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
 RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701"
-GOOGLE_CUSTOM_SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 
 
 def normalize_gemini_model(value: str | None) -> str:
@@ -521,69 +520,70 @@ def parse_gemini_lineup(payload: dict[str, Any]) -> list[LineupItem]:
     return parse_lineup_items(parsed)
 
 
-def image_url_from_custom_search_item(item: dict[str, Any]) -> str | None:
-    pagemap = item.get("pagemap")
-    if not isinstance(pagemap, dict):
-        return None
+def image_url_from_brave_search_item(item: dict[str, Any]) -> str | None:
+    thumbnail = item.get("thumbnail")
+    if isinstance(thumbnail, dict):
+        for key in ("src", "original"):
+            image_url = thumbnail.get(key)
+            if isinstance(image_url, str) and image_url:
+                return image_url
 
-    cse_images = pagemap.get("cse_image")
-    if isinstance(cse_images, list):
-        for image in cse_images:
-            if isinstance(image, dict) and isinstance(image.get("src"), str):
-                return image["src"]
-
-    metatags = pagemap.get("metatags")
-    if isinstance(metatags, list):
-        for tag in metatags:
-            if not isinstance(tag, dict):
-                continue
-            for key in ("og:image", "twitter:image", "image"):
-                image_url = tag.get(key)
-                if isinstance(image_url, str) and image_url:
-                    return image_url
+    profile = item.get("profile")
+    if isinstance(profile, dict):
+        image_url = profile.get("img")
+        if isinstance(image_url, str) and image_url:
+            return image_url
 
     return None
 
 
 async def search_web_results_for_jan(jan: str) -> list[dict[str, str | None]]:
-    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+    if not BRAVE_SEARCH_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail="GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID are required for web search fallback.",
+            detail="BRAVE_SEARCH_API_KEY is required for web search fallback.",
         )
 
     params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": GOOGLE_SEARCH_ENGINE_ID,
         "q": f'"{jan}" JAN グッズ 商品',
-        "num": 5,
-        "lr": "lang_ja",
+        "count": 8,
+        "country": "JP",
+        "search_lang": "ja",
+        "ui_lang": "ja-JP",
+        "safesearch": "moderate",
+        "spellcheck": 1,
+    }
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
     }
 
     try:
         async with httpx.AsyncClient(timeout=12) as client:
-            response = await client.get(GOOGLE_CUSTOM_SEARCH_ENDPOINT, params=params)
+            response = await client.get(BRAVE_SEARCH_ENDPOINT, params=params, headers=headers)
     except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not connect to Google Custom Search API.")
+        raise HTTPException(status_code=502, detail="Could not connect to Brave Search API.")
 
     if response.status_code != 200:
         try:
             payload = response.json()
-            message = payload.get("error", {}).get("message")
+            message = payload.get("error", {}).get("detail") or payload.get("message")
         except ValueError:
             message = None
-        detail = f"Google Custom Search API request failed. status={response.status_code}"
+        detail = f"Brave Search API request failed. status={response.status_code}"
         if isinstance(message, str) and message:
             detail = f"{detail}: {message}"
         raise HTTPException(status_code=502, detail=detail)
 
     results: list[dict[str, str | None]] = []
-    for item in response.json().get("items") or []:
+    web_results = response.json().get("web", {}).get("results") or []
+    for item in web_results:
         if not isinstance(item, dict):
             continue
-        link = item.get("link")
+        link = item.get("url")
         title = item.get("title")
-        snippet = item.get("snippet")
+        snippet = item.get("description")
         if not isinstance(link, str) or not isinstance(title, str):
             continue
         results.append(
@@ -591,12 +591,12 @@ async def search_web_results_for_jan(jan: str) -> list[dict[str, str | None]]:
                 "title": title,
                 "snippet": snippet if isinstance(snippet, str) else "",
                 "link": link,
-                "imageUrl": image_url_from_custom_search_item(item),
+                "imageUrl": image_url_from_brave_search_item(item),
             },
         )
 
     if not results:
-        raise HTTPException(status_code=404, detail="Google Custom Search did not return product candidates.")
+        raise HTTPException(status_code=404, detail="Brave Search did not return product candidates.")
     return results
 
 
@@ -854,7 +854,7 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
     return AnalyzeLineupResponse(lineup=lineup, warnings=warnings)
 
 
-async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
+async def lookup_product_with_web_search(jan: str) -> LookupResponse:
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured.")
 
@@ -863,7 +863,7 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     prompt = (
         "You help identify Japanese character goods for a collection app. "
-        "You are given Google Custom Search results for a JAN code. "
+        "You are given Brave Search results for a JAN code. "
         "Return exactly one most likely product as JSON using only the provided search results. "
         "Prioritize official stores, manufacturer pages, product pages, and results that explicitly mention the JAN code. "
         "If only similar product names are found, lower confidence. "
@@ -884,7 +884,7 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
         '"warnings":["notes"]'
         "}"
         f"\n\nJAN code: {jan}"
-        f"\n\nGoogle Custom Search results JSON:\n{search_context}"
+        f"\n\nBrave Search results JSON:\n{search_context}"
     )
 
     request_body = {
@@ -964,7 +964,7 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
         janCode=jan,
         boxName=box_name,
         imageUrl=image_url,
-        sourceLabel="Google Custom Search + Gemini",
+        sourceLabel="Brave Search + Gemini",
         lineup=parse_lineup_items(parsed.get("lineup")),
         warnings=warnings,
         confidence=confidence,
@@ -980,7 +980,7 @@ async def health() -> dict[str, Any]:
         "rakutenAccessKeyConfigured": bool(RAKUTEN_ACCESS_KEY),
         "geminiConfigured": bool(GEMINI_API_KEY),
         "geminiModel": GEMINI_MODEL,
-        "googleSearchConfigured": bool(GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID),
+        "braveSearchConfigured": bool(BRAVE_SEARCH_API_KEY),
     }
 
 
@@ -995,7 +995,7 @@ async def lookup(
         product, search_warnings = await search_product(normalized_jan, provider)
     except HTTPException as search_error:
         try:
-            fallback_result = await lookup_product_with_gemini_search(normalized_jan)
+            fallback_result = await lookup_product_with_web_search(normalized_jan)
         except HTTPException as fallback_error:
             raise HTTPException(
                 status_code=fallback_error.status_code,
