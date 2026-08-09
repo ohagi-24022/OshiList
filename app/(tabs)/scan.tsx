@@ -115,14 +115,23 @@ export default function ScanScreen() {
       setStatusMessage('商品情報を取得しました。登録内容を確認してください。');
       setResult(product);
     } catch (error) {
-      setStatusMessage('商品情報を取得できませんでした。手動登録に切り替えます。');
+      setStatusMessage('商品情報を取得できませんでした。再スキャンするか、手動登録を選んでください。');
       Alert.alert(
-        '手動登録に切り替えます',
+        '商品情報を取得できませんでした',
         error instanceof Error ? error.message : '商品情報を取得できませんでした。',
-        [{ text: 'OK', onPress: () => {
-          resetScanLock();
-          setMode('manual');
-        } }],
+        [
+          {
+            text: '再スキャン',
+            onPress: resetScanLock,
+          },
+          {
+            text: '手動登録',
+            onPress: () => {
+              resetScanLock();
+              setMode('manual');
+            },
+          },
+        ],
       );
       setManualJan(normalizedJan);
     } finally {
