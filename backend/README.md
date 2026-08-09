@@ -10,6 +10,19 @@ cd backend
 python -m pip install -r requirements.txt
 ```
 
+## Web Search Fallback
+
+When Yahoo/Rakuten product APIs do not return a usable JAN result, `/lookup` uses Google Custom Search API first, then asks Gemini to format those search results with normal text generation. It does not use Gemini `google_search` grounding, so it avoids the separate Search Grounding quota.
+
+Required environment variables:
+
+```text
+GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
+GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+```
+
+If these values are missing, the fallback returns `503` and the app can continue to manual registration.
+
 プロジェクトルートに `.env` を作成します。
 
 ```env
@@ -19,6 +32,8 @@ RAKUTEN_APP_ID=your_rakuten_application_id
 RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
+GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
+GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
 ALLOWED_ORIGINS=*
 ```
 
@@ -64,6 +79,8 @@ RAKUTEN_APP_ID=your_rakuten_application_id
 RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
+GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
+GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
 ALLOWED_ORIGINS=*
 PYTHON_VERSION=3.12.8
 ```
@@ -96,7 +113,7 @@ oshilist-api.onrender.com
 
 Yahoo!ショッピングAPI、楽天商品検索APIの順に商品名と画像URLを取得し、Gemini設定があればラインナップ候補も返します。
 
-商品APIで見つからない場合は、`GEMINI_API_KEY` が設定されていれば Gemini の Google Search grounding を使ってJANコードをWeb検索し、公式ストアや商品ページなどから商品候補を構造化して返します。この場合は `sourceLabel` が `AI Web検索候補` になり、`confidence`、`sourceUrls`、確認用の `warnings` が返ります。
+When product APIs cannot identify a JAN code, `/lookup` now calls Google Custom Search first and then asks Gemini to format those search results. Configure `GOOGLE_SEARCH_API_KEY`, `GOOGLE_SEARCH_ENGINE_ID`, and `GEMINI_API_KEY` on Render to enable this fallback. This path does not use Gemini Google Search grounding.
 
 検索元を固定したい場合は `provider` を指定できます。
 

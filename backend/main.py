@@ -17,10 +17,13 @@ YAHOO_APP_ID = os.getenv("YAHOO_APP_ID")
 RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
 RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
+GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID") or os.getenv("GOOGLE_CSE_ID")
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
 RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701"
+GOOGLE_CUSTOM_SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 
 
 def normalize_gemini_model(value: str | None) -> str:
@@ -518,24 +521,83 @@ def parse_gemini_lineup(payload: dict[str, Any]) -> list[LineupItem]:
     return parse_lineup_items(parsed)
 
 
-def extract_grounding_source_urls(payload: dict[str, Any]) -> list[str]:
-    metadata = payload.get("candidates", [{}])[0].get("groundingMetadata", {})
-    chunks = metadata.get("groundingChunks") or []
-    urls: list[str] = []
-    seen: set[str] = set()
+def image_url_from_custom_search_item(item: dict[str, Any]) -> str | None:
+    pagemap = item.get("pagemap")
+    if not isinstance(pagemap, dict):
+        return None
 
-    for chunk in chunks:
-        if not isinstance(chunk, dict):
-            continue
-        web_chunk = chunk.get("web")
-        if not isinstance(web_chunk, dict):
-            continue
-        uri = web_chunk.get("uri")
-        if isinstance(uri, str) and uri and uri not in seen:
-            seen.add(uri)
-            urls.append(uri)
+    cse_images = pagemap.get("cse_image")
+    if isinstance(cse_images, list):
+        for image in cse_images:
+            if isinstance(image, dict) and isinstance(image.get("src"), str):
+                return image["src"]
 
-    return urls
+    metatags = pagemap.get("metatags")
+    if isinstance(metatags, list):
+        for tag in metatags:
+            if not isinstance(tag, dict):
+                continue
+            for key in ("og:image", "twitter:image", "image"):
+                image_url = tag.get(key)
+                if isinstance(image_url, str) and image_url:
+                    return image_url
+
+    return None
+
+
+async def search_web_results_for_jan(jan: str) -> list[dict[str, str | None]]:
+    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+        raise HTTPException(
+            status_code=503,
+            detail="GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID are required for web search fallback.",
+        )
+
+    params = {
+        "key": GOOGLE_SEARCH_API_KEY,
+        "cx": GOOGLE_SEARCH_ENGINE_ID,
+        "q": f'"{jan}" JAN グッズ 商品',
+        "num": 5,
+        "lr": "lang_ja",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(GOOGLE_CUSTOM_SEARCH_ENDPOINT, params=params)
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not connect to Google Custom Search API.")
+
+    if response.status_code != 200:
+        try:
+            payload = response.json()
+            message = payload.get("error", {}).get("message")
+        except ValueError:
+            message = None
+        detail = f"Google Custom Search API request failed. status={response.status_code}"
+        if isinstance(message, str) and message:
+            detail = f"{detail}: {message}"
+        raise HTTPException(status_code=502, detail=detail)
+
+    results: list[dict[str, str | None]] = []
+    for item in response.json().get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        link = item.get("link")
+        title = item.get("title")
+        snippet = item.get("snippet")
+        if not isinstance(link, str) or not isinstance(title, str):
+            continue
+        results.append(
+            {
+                "title": title,
+                "snippet": snippet if isinstance(snippet, str) else "",
+                "link": link,
+                "imageUrl": image_url_from_custom_search_item(item),
+            },
+        )
+
+    if not results:
+        raise HTTPException(status_code=404, detail="Google Custom Search did not return product candidates.")
+    return results
 
 
 def parse_json_from_gemini(payload: dict[str, Any]) -> Any:
@@ -796,11 +858,14 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured.")
 
+    search_results = await search_web_results_for_jan(jan)
+    search_context = json.dumps(search_results, ensure_ascii=False)
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     prompt = (
         "You help identify Japanese character goods for a collection app. "
-        "Search the web for the following JAN code and return exactly one most likely product as JSON. "
-        "Prioritize official stores, manufacturer pages, product pages, and pages that explicitly mention the JAN code. "
+        "You are given Google Custom Search results for a JAN code. "
+        "Return exactly one most likely product as JSON using only the provided search results. "
+        "Prioritize official stores, manufacturer pages, product pages, and results that explicitly mention the JAN code. "
         "If only similar product names are found, lower confidence. "
         "Treat used, buyback, opened, junk, outlet, and damaged-item listings as weak evidence. "
         "If the product appears to be random, trading, blind-box, or blind-pack goods, extract the confirmed lineup when possible. "
@@ -819,25 +884,49 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
         '"warnings":["notes"]'
         "}"
         f"\n\nJAN code: {jan}"
+        f"\n\nGoogle Custom Search results JSON:\n{search_context}"
     )
 
     request_body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "tools": [{"google_search": {}}],
-        "generationConfig": {"temperature": 0.2},
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "object",
+                "properties": {
+                    "boxName": {"type": "string"},
+                    "seriesName": {"type": "string"},
+                    "goodsType": {"type": "string"},
+                    "imageUrl": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "sourceUrls": {"type": "array", "items": {"type": "string"}},
+                    "lineup": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "characterName": {"type": "string"},
+                                "variantName": {"type": "string"},
+                            },
+                            "required": ["characterName", "variantName"],
+                        },
+                    },
+                    "warnings": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["boxName", "confidence", "sourceUrls", "lineup", "warnings"],
+            },
+        },
     }
 
     try:
         async with httpx.AsyncClient(timeout=55) as client:
             response = await client.post(endpoint, headers={"x-goog-api-key": GEMINI_API_KEY}, json=request_body)
-            if response.status_code == 400:
-                request_body["tools"] = [{"googleSearch": {}}]
-                response = await client.post(endpoint, headers={"x-goog-api-key": GEMINI_API_KEY}, json=request_body)
     except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not connect to Gemini Web search.")
+        raise HTTPException(status_code=502, detail="Could not connect to Gemini product candidate formatter.")
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=gemini_error_message(response, "AI Web search"))
+        raise HTTPException(status_code=502, detail=gemini_error_message(response, "web search result formatting"))
 
     payload = response.json()
     parsed = parse_json_from_gemini(payload)
@@ -846,6 +935,8 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
 
     box_name = str(parsed.get("boxName") or parsed.get("box_name") or "").strip()
     image_url = str(parsed.get("imageUrl") or parsed.get("image_url") or "").strip() or None
+    if not image_url:
+        image_url = next((result["imageUrl"] for result in search_results if result.get("imageUrl")), None)
     try:
         confidence = float(parsed.get("confidence", 0.0))
     except (TypeError, ValueError):
@@ -854,25 +945,26 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
 
     parsed_urls = parsed.get("sourceUrls") or parsed.get("source_urls") or []
     source_urls = [str(url).strip() for url in parsed_urls if isinstance(url, str) and str(url).strip()] if isinstance(parsed_urls, list) else []
-    for url in extract_grounding_source_urls(payload):
-        if url not in source_urls:
-            source_urls.append(url)
+    for result in search_results:
+        link = result.get("link")
+        if isinstance(link, str) and link not in source_urls:
+            source_urls.append(link)
 
     parsed_warnings = parsed.get("warnings")
     warnings = [str(warning).strip() for warning in parsed_warnings if isinstance(warning, str) and warning.strip()] if isinstance(parsed_warnings, list) else []
     if confidence < 0.6:
-        warnings.append("AI Web search confidence is low. Please confirm the product name and image before registering.")
+        warnings.append("Web search fallback confidence is low. Please confirm the product name and image before registering.")
     if source_urls:
-        warnings.append(f"AI Web search source: {source_urls[0]}")
+        warnings.append(f"Web search source: {source_urls[0]}")
 
     if not box_name:
-        raise HTTPException(status_code=404, detail="AI Web search could not identify a product name.")
+        raise HTTPException(status_code=404, detail="Web search fallback could not identify a product name.")
 
     return LookupResponse(
         janCode=jan,
         boxName=box_name,
         imageUrl=image_url,
-        sourceLabel="AI Web Search",
+        sourceLabel="Google Custom Search + Gemini",
         lineup=parse_lineup_items(parsed.get("lineup")),
         warnings=warnings,
         confidence=confidence,
@@ -888,6 +980,7 @@ async def health() -> dict[str, Any]:
         "rakutenAccessKeyConfigured": bool(RAKUTEN_ACCESS_KEY),
         "geminiConfigured": bool(GEMINI_API_KEY),
         "geminiModel": GEMINI_MODEL,
+        "googleSearchConfigured": bool(GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID),
     }
 
 
@@ -906,7 +999,7 @@ async def lookup(
         except HTTPException as fallback_error:
             raise HTTPException(
                 status_code=fallback_error.status_code,
-                detail=f"Product APIs failed, and AI Web search also failed: {fallback_error.detail}",
+                detail=f"Product APIs failed, and web search fallback also failed: {fallback_error.detail}",
             )
         fallback_result.warnings = [f"Product APIs did not return a usable result: {search_error.detail}", *fallback_result.warnings]
         return fallback_result
