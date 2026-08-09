@@ -72,8 +72,8 @@ export default function RandomOpeningScreen() {
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.titleBlock}>
-          <View>
-            <Text style={[styles.title, { color: colors.text }]}>ランダム開封</Text>
+          <View style={styles.titleText}>
+            <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>ランダム開封</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>ラインナップごとに、どれが何個出たかを記録します。</Text>
           </View>
           <View style={[styles.sessionBadge, { backgroundColor: colors.primary }]}>
@@ -127,7 +127,7 @@ export default function RandomOpeningScreen() {
         {selectedLineup ? (
           <View style={[styles.detailPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.detailHeader}>
-              <View>
+              <View style={styles.detailTitleBlock}>
                 <Text style={[styles.detailTitle, { color: colors.text }]}>開封結果</Text>
                 <Text style={[styles.detailMeta, { color: colors.muted }]}>
                   {selectedLineup.items.length}種 / 合計 {selectedLineup.totalQuantity}個
@@ -176,35 +176,37 @@ export default function RandomOpeningScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { gap: 14, padding: 18, paddingBottom: 96 },
+  content: { gap: 14, padding: 16, paddingBottom: 96 },
   titleBlock: { alignItems: 'flex-start', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
+  titleText: { flex: 1, minWidth: 0 },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
-  sessionBadge: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  sessionBadge: { borderRadius: 8, flexShrink: 0, paddingHorizontal: 10, paddingVertical: 8 },
   sessionBadgeText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
   lineupList: { gap: 10 },
   lineupCard: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 12, minHeight: 76, padding: 10 },
   lineupImageBox: { alignItems: 'center', borderRadius: 8, height: 56, justifyContent: 'center', overflow: 'hidden', width: 56 },
   lineupImage: { height: '100%', width: '100%' },
-  lineupText: { flex: 1 },
+  lineupText: { flex: 1, minWidth: 0 },
   lineupTitle: { fontSize: 15, fontWeight: '900' },
   lineupMeta: { fontSize: 12, fontWeight: '700', marginTop: 4 },
   emptyBox: { alignItems: 'center', borderRadius: 8, borderWidth: 1, gap: 8, padding: 20 },
   emptyTitle: { fontSize: 16, fontWeight: '900' },
   emptyText: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
   detailPanel: { borderRadius: 8, borderWidth: 1, padding: 12 },
-  detailHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  detailHeader: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'space-between', marginBottom: 10 },
+  detailTitleBlock: { flex: 1, minWidth: 0 },
   detailTitle: { fontSize: 18, fontWeight: '900' },
   detailMeta: { fontSize: 12, fontWeight: '700', marginTop: 3 },
-  resetButton: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  resetButton: { borderRadius: 8, flexShrink: 0, paddingHorizontal: 10, paddingVertical: 8 },
   resetText: { fontSize: 12, fontWeight: '900' },
   itemList: { gap: 9 },
   itemRow: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 10, minHeight: 72, padding: 9 },
   itemImageBox: { alignItems: 'center', borderRadius: 8, height: 52, justifyContent: 'center', overflow: 'hidden', width: 52 },
   itemImage: { height: '100%', width: '100%' },
-  itemText: { flex: 1 },
+  itemText: { flex: 1, minWidth: 0 },
   itemTitle: { fontSize: 15, fontWeight: '900' },
   itemMeta: { fontSize: 12, fontWeight: '700', marginTop: 4 },
-  addButton: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', gap: 2, height: 46, justifyContent: 'center', width: 58 },
+  addButton: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', flexShrink: 0, gap: 2, height: 46, justifyContent: 'center', width: 58 },
   addButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '900' },
 });
