@@ -73,6 +73,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="random"
+        options={{
+          href: visibleTabs.has('random') ? undefined : null,
+          title: '開封',
+          tabBarIcon: ({ color, size }) => <Ionicons color={color} name="cube-outline" size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="mypage-tab"
         options={{
           href: visibleTabs.has('mypage') ? undefined : null,

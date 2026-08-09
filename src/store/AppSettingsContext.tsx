@@ -19,7 +19,7 @@ const defaultSettings: AppSettings = {
   groupRandomGoods: false,
   utilityTabs: ['collection', 'schedule'],
 };
-const allowedUtilityTabs = new Set(['collection', 'schedule', 'calendar', 'manage', 'mypage', 'event']);
+const allowedUtilityTabs = new Set(['collection', 'schedule', 'calendar', 'manage', 'mypage', 'event', 'random']);
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 

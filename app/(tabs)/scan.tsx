@@ -32,7 +32,7 @@ import { useGoods } from '../../src/store/GoodsContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, PhotoInferResult, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
-type ScanMode = 'barcode' | 'receipt' | 'photo' | 'manual' | 'opening' | 'plan' | 'check' | 'event';
+type ScanMode = 'barcode' | 'receipt' | 'photo' | 'manual' | 'plan' | 'check' | 'event';
 type RegistrationFlow = 'owned' | 'planned';
 type ReceiptSource = 'camera' | 'library';
 type ReceiptCandidateChoice = {
@@ -45,7 +45,7 @@ type ReceiptCandidateChoice = {
 
 export default function ScanScreen() {
   const { colors } = useAppTheme();
-  const { addGoods, goods, updateQuantity } = useGoods();
+  const { addGoods, goods } = useGoods();
   const { events, selectedEventId, setSelectedEventId } = useEvents();
   const params = useLocalSearchParams<{ mode?: string }>();
   const scrollRef = useRef<ScrollView>(null);
@@ -65,7 +65,6 @@ export default function ScanScreen() {
   const [photoImageUri, setPhotoImageUri] = useState<string | null>(null);
   const [checkJan, setCheckJan] = useState('');
   const [checkResult, setCheckResult] = useState<Goods[]>([]);
-  const [openingCounts, setOpeningCounts] = useState<Record<number, number>>({});
   const scanLockRef = useRef(false);
   const lastScannedJanRef = useRef<string | null>(null);
 
@@ -75,7 +74,6 @@ export default function ScanScreen() {
       params.mode === 'receipt' ||
       params.mode === 'photo' ||
       params.mode === 'manual' ||
-      params.mode === 'opening' ||
       params.mode === 'plan' ||
       params.mode === 'check' ||
       params.mode === 'event'
@@ -85,7 +83,7 @@ export default function ScanScreen() {
     }
   }, [params.mode]);
 
-  const ownedModes: ScanMode[] = ['barcode', 'receipt', 'photo', 'manual', 'opening'];
+  const ownedModes: ScanMode[] = ['barcode', 'receipt', 'photo', 'manual'];
   const plannedModes: ScanMode[] = ['plan', 'check', 'event'];
   const visibleModes = registrationFlow === 'owned' ? ownedModes : plannedModes;
 
@@ -142,11 +140,6 @@ export default function ScanScreen() {
     if (!normalizedJan) return;
     setCheckJan(normalizedJan);
     setCheckResult(goods.filter((item) => item.janCode === normalizedJan));
-  };
-
-  const registerOpening = async (item: Goods) => {
-    await updateQuantity(item.id, 1);
-    setOpeningCounts((current) => ({ ...current, [item.id]: (current[item.id] ?? 0) + 1 }));
   };
 
   const readReceiptImage = async (source: ReceiptSource) => {
@@ -231,8 +224,6 @@ export default function ScanScreen() {
   };
 
   const cameraReady = Platform.OS !== 'web' && permission?.granted && isFocused && (mode === 'barcode' || mode === 'check');
-  const openingGoods = useMemo(() => goods.filter((item) => item.isRandom && item.status !== 'unorganized'), [goods]);
-  const openingTotal = Object.values(openingCounts).reduce((sum, count) => sum + count, 0);
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
   useTabReset(scrollRef);
 
@@ -282,9 +273,7 @@ export default function ScanScreen() {
                           ? 'camera-outline'
                           : value === 'manual'
                             ? 'create-outline'
-                            : value === 'opening'
-                              ? 'cube-outline'
-                              : value === 'plan'
+                            : value === 'plan'
                                 ? 'calendar-outline'
                       : value === 'check'
                         ? 'shield-checkmark-outline'
@@ -301,9 +290,7 @@ export default function ScanScreen() {
                         ? '写真登録α'
                         : value === 'manual'
                           ? '手動登録'
-                          : value === 'opening'
-                            ? '連続開封'
-                            : value === 'plan'
+                          : value === 'plan'
                               ? '予定登録'
                               : value === 'check'
                                 ? '買う前'
@@ -471,28 +458,6 @@ export default function ScanScreen() {
                   )}
                 </View>
               ) : null}
-            </View>
-          ) : mode === 'opening' ? (
-            <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.receiptIcon}>
-                <Ionicons color={colors.primary} name="cube-outline" size={34} />
-              </View>
-              <Text style={[styles.receiptTitle, { color: colors.text }]}>連続開封モード</Text>
-              <Text style={[styles.receiptText, { color: colors.muted }]}>ランダムグッズをタップするだけで +1 します。今回の開封数: {openingTotal}</Text>
-              <View style={styles.quickList}>
-                {openingGoods.slice(0, 16).map((item) => (
-                  <Pressable key={`opening-${item.id}`} onPress={() => registerOpening(item)} style={[styles.quickRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
-                    <View style={styles.quickText}>
-                      <Text numberOfLines={1} style={[styles.quickTitle, { color: colors.text }]}>{item.characterName}</Text>
-                      <Text numberOfLines={1} style={[styles.quickMeta, { color: colors.muted }]}>{item.boxName} / 今回 +{openingCounts[item.id] ?? 0}</Text>
-                    </View>
-                    <View style={[styles.quickAdd, { backgroundColor: colors.primary }]}>
-                      <Ionicons color="#ffffff" name="add" size={20} />
-                    </View>
-                  </Pressable>
-                ))}
-                {!openingGoods.length ? <Text style={[styles.receiptText, { color: colors.muted }]}>ランダムグッズを登録するとここに表示されます。</Text> : null}
-              </View>
             </View>
           ) : mode === 'event' ? (
             <View style={[styles.receiptPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>

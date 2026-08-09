@@ -15,6 +15,7 @@ const utilityTabLabels: Record<string, string> = {
   event: 'イベント',
   manage: '管理',
   mypage: 'マイページ',
+  random: 'ランダム開封',
   schedule: '予定',
 };
 

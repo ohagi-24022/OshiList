@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSettings } from '../src/store/AppSettingsContext';
 import { useAppTheme } from '../src/store/ThemeContext';
 
-type UtilityTabId = 'collection' | 'schedule' | 'calendar' | 'manage' | 'mypage' | 'event';
+type UtilityTabId = 'collection' | 'schedule' | 'calendar' | 'manage' | 'mypage' | 'event' | 'random';
 
 const tabOptions = [
   { id: 'collection', label: 'コレクション', icon: 'albums-outline' },
@@ -16,6 +16,7 @@ const tabOptions = [
   { id: 'manage', label: '管理', icon: 'create-outline' },
   { id: 'mypage', label: 'マイページ', icon: 'person-circle-outline' },
   { id: 'event', label: 'イベント', icon: 'sparkles-outline' },
+  { id: 'random', label: 'ランダム開封', icon: 'cube-outline' },
 ] as const;
 
 export default function TabEditorScreen() {
