@@ -640,7 +640,7 @@ async def extract_receipt_items_with_gemini(image_base64: str, mime_type: str) -
         return [], ["Gemini APIへ接続できなかったため、領収書解析に失敗しました。"]
 
     if response.status_code != 200:
-        return [], [gemini_error_message(response)]
+        return [], [gemini_error_message(response, "receipt parsing")]
 
     parsed = parse_json_from_gemini(response.json())
     items = parse_receipt_items(parsed.get("items") if isinstance(parsed, dict) else parsed)
@@ -705,7 +705,7 @@ async def infer_goods_from_photo_with_gemini(image_base64: str, mime_type: str) 
         return PhotoInferResponse(warnings=["Gemini APIへ接続できなかったため、写真から推定できませんでした。"])
 
     if response.status_code != 200:
-        return PhotoInferResponse(warnings=[gemini_error_message(response)])
+        return PhotoInferResponse(warnings=[gemini_error_message(response, "photo inference")])
 
     parsed = parse_json_from_gemini(response.json())
     if not isinstance(parsed, dict):
@@ -732,15 +732,17 @@ async def infer_goods_from_photo_with_gemini(image_base64: str, mime_type: str) 
     return result
 
 
-def gemini_error_message(response: httpx.Response) -> str:
+def gemini_error_message(response: httpx.Response, task_label: str = "Gemini API") -> str:
     try:
         payload = response.json()
     except ValueError:
-        return f"Gemini APIでラインナップ解析に失敗しました。status={response.status_code}"
+        return f"{task_label} failed. status={response.status_code}"
     message = payload.get("error", {}).get("message")
+    if response.status_code == 429:
+        return f"{task_label} failed because Gemini API quota was exceeded. Check Google AI Studio usage, rate limits, and billing settings."
     if isinstance(message, str) and message:
-        return f"Gemini APIでラインナップ解析に失敗しました。status={response.status_code}: {message}"
-    return f"Gemini APIでラインナップ解析に失敗しました。status={response.status_code}"
+        return f"{task_label} failed. status={response.status_code}: {message}"
+    return f"{task_label} failed. status={response.status_code}"
 
 
 async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse:
@@ -783,7 +785,7 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
         return AnalyzeLineupResponse(warnings=["Gemini APIへ接続できなかったため、ラインナップ解析はスキップしました。"])
 
     if response.status_code != 200:
-        return AnalyzeLineupResponse(warnings=[gemini_error_message(response)])
+        return AnalyzeLineupResponse(warnings=[gemini_error_message(response, "lineup analysis")])
 
     lineup = parse_gemini_lineup(response.json())
     warnings = [] if lineup else ["Geminiから有効なラインナップ候補を取得できませんでした。"]
@@ -835,7 +837,7 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
         raise HTTPException(status_code=502, detail="Could not connect to Gemini Web search.")
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=gemini_error_message(response))
+        raise HTTPException(status_code=502, detail=gemini_error_message(response, "AI Web search"))
 
     payload = response.json()
     parsed = parse_json_from_gemini(payload)
