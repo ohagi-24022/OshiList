@@ -47,7 +47,7 @@ def normalize_gemini_model(value: str | None) -> str:
 
 GEMINI_MODEL = normalize_gemini_model(os.getenv("GEMINI_MODEL"))
 
-app = FastAPI(title="OshiList Product Lookup", version="0.3.1")
+app = FastAPI(title="OshiList Product Lookup", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,6 +70,8 @@ class LookupResponse(BaseModel):
     sourceLabel: str
     lineup: list[LineupItem] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    sourceUrls: list[str] = Field(default_factory=list)
 
 
 class AnalyzeLineupRequest(BaseModel):
@@ -457,6 +459,26 @@ def parse_gemini_lineup(payload: dict[str, Any]) -> list[LineupItem]:
     return parse_lineup_items(parsed)
 
 
+def extract_grounding_source_urls(payload: dict[str, Any]) -> list[str]:
+    metadata = payload.get("candidates", [{}])[0].get("groundingMetadata", {})
+    chunks = metadata.get("groundingChunks") or []
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        web_chunk = chunk.get("web")
+        if not isinstance(web_chunk, dict):
+            continue
+        uri = web_chunk.get("uri")
+        if isinstance(uri, str) and uri and uri not in seen:
+            seen.add(uri)
+            urls.append(uri)
+
+    return urls
+
+
 def parse_json_from_gemini(payload: dict[str, Any]) -> Any:
     parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
     text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
@@ -709,6 +731,100 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
     return AnalyzeLineupResponse(lineup=lineup, warnings=warnings)
 
 
+async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured.")
+
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    prompt = (
+        "あなたは日本の推しグッズ管理アプリの商品検索補助です。"
+        "次のJANコードをWeb検索し、公式ストア、メーカーの商品ページ、通販ページ、商品紹介ページなどの情報から、"
+        "最も可能性が高い商品を1件だけJSONで返してください。"
+        "JANコードがページ内に明記されている情報を最優先し、商品名だけが似ている候補はconfidenceを低くしてください。"
+        "ランダム/トレーディング/ブラインド商品らしい場合は、確認できる範囲でラインナップも抽出してください。"
+        "画像URLは商品画像として使えそうなURLが見つかった場合だけ入れてください。"
+        "不明な項目は空文字または空配列にしてください。推測で埋めないでください。"
+        "返答は説明文なしのJSONオブジェクトのみです。"
+        "\n\nJSON schema:"
+        "{"
+        '"boxName":"商品名",'
+        '"seriesName":"作品名またはシリーズ名",'
+        '"goodsType":"缶バッジ/アクリルスタンド等",'
+        '"imageUrl":"商品画像URLまたは空文字",'
+        '"confidence":0.0,'
+        '"sourceUrls":["根拠URL"],'
+        '"lineup":[{"characterName":"キャラクター名","variantName":"仕様名"}],'
+        '"warnings":["注意点"]'
+        "}"
+        f"\n\nJANコード: {jan}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=35) as client:
+            request_body = {
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {"temperature": 0.2},
+            }
+            response = await client.post(
+                endpoint,
+                headers={"x-goog-api-key": GEMINI_API_KEY},
+                json=request_body,
+            )
+            if response.status_code == 400:
+                request_body["tools"] = [{"googleSearch": {}}]
+                response = await client.post(
+                    endpoint,
+                    headers={"x-goog-api-key": GEMINI_API_KEY},
+                    json=request_body,
+                )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Gemini Web検索へ接続できませんでした。")
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=gemini_error_message(response))
+
+    payload = response.json()
+    parsed = parse_json_from_gemini(payload)
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=404, detail="AI Web検索で商品候補を構造化できませんでした。")
+
+    box_name = str(parsed.get("boxName") or parsed.get("box_name") or "").strip()
+    image_url = str(parsed.get("imageUrl") or parsed.get("image_url") or "").strip() or None
+    try:
+        confidence = float(parsed.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    parsed_urls = parsed.get("sourceUrls") or parsed.get("source_urls") or []
+    source_urls = [str(url).strip() for url in parsed_urls if isinstance(url, str) and str(url).strip()] if isinstance(parsed_urls, list) else []
+    for url in extract_grounding_source_urls(payload):
+        if url not in source_urls:
+            source_urls.append(url)
+
+    parsed_warnings = parsed.get("warnings")
+    warnings = [str(warning).strip() for warning in parsed_warnings if isinstance(warning, str) and warning.strip()] if isinstance(parsed_warnings, list) else []
+    if confidence < 0.6:
+        warnings.append("AI Web検索の信頼度が低いため、登録前に商品名と画像を確認してください。")
+    if source_urls:
+        warnings.append(f"AI Web検索の参照元: {source_urls[0]}")
+
+    if not box_name:
+        raise HTTPException(status_code=404, detail="AI Web検索でも商品名を特定できませんでした。")
+
+    return LookupResponse(
+        janCode=jan,
+        boxName=box_name,
+        imageUrl=image_url,
+        sourceLabel="AI Web検索候補",
+        lineup=parse_lineup_items(parsed.get("lineup")),
+        warnings=warnings,
+        confidence=confidence,
+        sourceUrls=source_urls[:5],
+    )
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     return {
@@ -728,7 +844,16 @@ async def lookup(
     provider: str = Query(default="auto", pattern="^(auto|yahoo|rakuten)$"),
 ) -> LookupResponse:
     normalized_jan = validate_jan(jan)
-    product, search_warnings = await search_product(normalized_jan, provider)
+    try:
+        product, search_warnings = await search_product(normalized_jan, provider)
+    except HTTPException as search_error:
+        try:
+            fallback_result = await lookup_product_with_gemini_search(normalized_jan)
+        except HTTPException:
+            raise search_error
+        fallback_result.warnings = [f"商品APIでは見つかりませんでした: {search_error.detail}", *fallback_result.warnings]
+        return fallback_result
+
     ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
 
     return LookupResponse(
@@ -738,6 +863,8 @@ async def lookup(
         sourceLabel=product.sourceLabel,
         lineup=ai_result.lineup,
         warnings=[*search_warnings, *ai_result.warnings],
+        confidence=None,
+        sourceUrls=[],
     )
 
 

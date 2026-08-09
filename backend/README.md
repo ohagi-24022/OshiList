@@ -96,6 +96,8 @@ oshilist-api.onrender.com
 
 Yahoo!ショッピングAPI、楽天商品検索APIの順に商品名と画像URLを取得し、Gemini設定があればラインナップ候補も返します。
 
+商品APIで見つからない場合は、`GEMINI_API_KEY` が設定されていれば Gemini の Google Search grounding を使ってJANコードをWeb検索し、公式ストアや商品ページなどから商品候補を構造化して返します。この場合は `sourceLabel` が `AI Web検索候補` になり、`confidence`、`sourceUrls`、確認用の `warnings` が返ります。
+
 検索元を固定したい場合は `provider` を指定できます。
 
 ```text

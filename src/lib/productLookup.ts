@@ -9,6 +9,9 @@ type LookupApiResponse = Partial<{
   sourceLabel: string;
   source: string;
   warnings: string[];
+  confidence: number | null;
+  sourceUrls: string[];
+  source_urls: string[];
   lineup: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
   variants: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
 }>;
@@ -119,6 +122,8 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
     imageUrl: payload?.imageUrl ?? payload?.image_url ?? null,
     sourceLabel: payload?.sourceLabel ?? payload?.source ?? '商品検索API',
     warnings: payload?.warnings ?? [],
+    confidence: payload?.confidence ?? null,
+    sourceUrls: payload?.sourceUrls ?? payload?.source_urls ?? [],
     lineup: variants
       .map((variant) => ({
         characterName: variant.characterName ?? variant.character_name ?? '',

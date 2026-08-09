@@ -67,6 +67,8 @@ export type ProductLookupResult = {
   imageUrl: string | null;
   sourceLabel: string;
   warnings?: string[];
+  confidence?: number | null;
+  sourceUrls?: string[];
   lineup: Array<{
     characterName: string;
     variantName: string;

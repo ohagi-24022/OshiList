@@ -1015,6 +1015,11 @@ function ProductPreview({ result }: { result: ProductLookupResult }) {
           <Text style={[styles.productMeta, { color: colors.muted }]}>
             {result.lineup.length ? `${result.lineup.length}件の候補` : '候補なし'}
           </Text>
+          {typeof result.confidence === 'number' ? (
+            <Text style={[styles.productMeta, { color: colors.muted }]}>
+              信頼度 {Math.round(result.confidence * 100)}%{result.sourceUrls?.length ? ` / 参照元 ${result.sourceUrls.length}件` : ''}
+            </Text>
+          ) : null}
         </View>
       </View>
       {!!result.warnings?.length && (
