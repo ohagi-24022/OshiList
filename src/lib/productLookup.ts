@@ -58,6 +58,7 @@ type PhotoInferApiResponse = Partial<{
 
 const LOOKUP_API_URL = process.env.EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL;
 const DEFAULT_TIMEOUT_MS = 30000;
+const LOOKUP_TIMEOUT_MS = 90000;
 const RECEIPT_TIMEOUT_MS = 60000;
 
 function readErrorMessage(payload: unknown) {
@@ -103,7 +104,7 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
     throw new Error('オフラインのため商品情報を取得できません。手動登録に切り替えてください。');
   }
 
-  const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup?jan=${encodeURIComponent(normalizedJan)}`);
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup?jan=${encodeURIComponent(normalizedJan)}`, {}, LOOKUP_TIMEOUT_MS);
   const payload = (await response.json().catch(() => null)) as LookupApiResponse | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));

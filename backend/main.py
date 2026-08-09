@@ -819,7 +819,7 @@ async def lookup_product_with_gemini_search(jan: str) -> LookupResponse:
     )
 
     try:
-        async with httpx.AsyncClient(timeout=35) as client:
+        async with httpx.AsyncClient(timeout=55) as client:
             request_body = {
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                 "tools": [{"google_search": {}}],
@@ -908,8 +908,11 @@ async def lookup(
     except HTTPException as search_error:
         try:
             fallback_result = await lookup_product_with_gemini_search(normalized_jan)
-        except HTTPException:
-            raise search_error
+        except HTTPException as fallback_error:
+            raise HTTPException(
+                status_code=fallback_error.status_code,
+                detail=f"商品APIでは見つかりませんでした。AI Web検索にも失敗しました: {fallback_error.detail}",
+            )
         fallback_result.warnings = [f"商品APIでは見つかりませんでした: {search_error.detail}", *fallback_result.warnings]
         return fallback_result
 
