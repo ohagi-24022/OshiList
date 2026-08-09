@@ -201,7 +201,7 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
           {
             backgroundColor: colors.background,
             borderBottomColor: colors.border,
-            paddingTop: embedded ? insets.top + 10 : 8,
+            paddingTop: insets.top + 10,
             transform: [{ translateY: headerTranslateY }],
           },
         ]}
