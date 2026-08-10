@@ -573,6 +573,17 @@ async def search_web_results_for_jan(jan: str) -> list[dict[str, str | None]]:
             message = payload.get("error", {}).get("message")
         except ValueError:
             message = None
+
+        if (
+            response.status_code == 403
+            and isinstance(message, str)
+            and "does not have the access to Custom Search JSON API" in message
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail="Google Custom Search JSON APIをこのプロジェクトで利用できません。手動登録に切り替えてください。",
+            )
+
         detail = f"Google Custom Search API request failed. status={response.status_code}"
         if isinstance(message, str) and message:
             detail = f"{detail}: {message}"
@@ -998,9 +1009,12 @@ async def lookup(
         try:
             fallback_result = await lookup_product_with_web_search(normalized_jan)
         except HTTPException as fallback_error:
+            fallback_detail = str(fallback_error.detail)
+            if "手動登録に切り替えてください" in fallback_detail:
+                raise HTTPException(status_code=fallback_error.status_code, detail=fallback_detail)
             raise HTTPException(
                 status_code=fallback_error.status_code,
-                detail=f"Product APIs failed, and web search fallback also failed: {fallback_error.detail}",
+                detail=f"商品APIとWeb検索のどちらでも商品情報を取得できませんでした。手動登録に切り替えてください。詳細: {fallback_error.detail}",
             )
         fallback_result.warnings = [f"Product APIs did not return a usable result: {search_error.detail}", *fallback_result.warnings]
         return fallback_result

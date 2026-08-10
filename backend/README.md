@@ -23,6 +23,8 @@ GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
 
 If these values are missing, the fallback returns `503` and the app can continue to manual registration.
 
+If Google returns `This project does not have the access to Custom Search JSON API`, the current Google Cloud project cannot use the JSON API. In that case, the app falls back to manual registration instead of showing the raw Google error.
+
 プロジェクトルートに `.env` を作成します。
 
 ```env
