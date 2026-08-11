@@ -1014,59 +1014,80 @@ async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
     if not BRAVE_SEARCH_API_KEY:
         raise HTTPException(status_code=503, detail="BRAVE_SEARCH_API_KEY is required for Brave Search fallback.")
 
-    params = {
-        "q": f'"{jan}" JAN グッズ 商品',
-        "count": 8,
-        "country": "JP",
-        "search_lang": "ja",
-        "ui_lang": "ja-JP",
-        "safesearch": "moderate",
-        "spellcheck": 1,
-    }
     headers = {
         "Accept": "application/json",
         "Accept-Encoding": "gzip",
         "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
     }
-
-    try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            response = await client.get(BRAVE_SEARCH_ENDPOINT, params=params, headers=headers)
-    except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not connect to Brave Search API.")
-
-    if response.status_code != 200:
-        try:
-            payload = response.json()
-            message = payload.get("error", {}).get("detail") or payload.get("message")
-        except ValueError:
-            message = None
-        detail = f"Brave Search API request failed. status={response.status_code}"
-        if isinstance(message, str) and message:
-            detail = f"{detail}: {message}"
-        raise HTTPException(status_code=502, detail=detail)
-
+    queries = [
+        f'"{jan}"',
+        jan,
+        f'"{jan}" 商品',
+        f'{jan} 商品',
+        f'{jan} JAN',
+        f'{jan} グッズ',
+    ]
     results: list[dict[str, str | None]] = []
-    for item in response.json().get("web", {}).get("results") or []:
-        if not isinstance(item, dict):
-            continue
-        link = item.get("url")
-        title = item.get("title")
-        snippet = item.get("description")
-        if not isinstance(link, str) or not isinstance(title, str):
-            continue
-        results.append(
-            {
-                "title": title,
-                "snippet": snippet if isinstance(snippet, str) else "",
-                "link": link,
-                "imageUrl": image_url_from_brave_search_item(item),
-            },
-        )
+    seen_links: set[str] = set()
+    errors: list[str] = []
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        for query in queries:
+            params = {
+                "q": query,
+                "count": 10,
+                "country": "JP",
+                "search_lang": "ja",
+                "ui_lang": "ja-JP",
+                "safesearch": "moderate",
+                "spellcheck": 1,
+            }
+
+            try:
+                response = await client.get(BRAVE_SEARCH_ENDPOINT, params=params, headers=headers)
+            except httpx.RequestError:
+                errors.append(f"{query}: connection failed")
+                continue
+
+            if response.status_code != 200:
+                try:
+                    payload = response.json()
+                    message = payload.get("error", {}).get("detail") or payload.get("message")
+                except ValueError:
+                    message = None
+                detail = f"{query}: status={response.status_code}"
+                if isinstance(message, str) and message:
+                    detail = f"{detail}: {message}"
+                errors.append(detail)
+                continue
+
+            for item in response.json().get("web", {}).get("results") or []:
+                if not isinstance(item, dict):
+                    continue
+                link = item.get("url")
+                title = item.get("title")
+                snippet = item.get("description")
+                if not isinstance(link, str) or not isinstance(title, str) or link in seen_links:
+                    continue
+                seen_links.add(link)
+                results.append(
+                    {
+                        "title": title,
+                        "snippet": snippet if isinstance(snippet, str) else "",
+                        "link": link,
+                        "imageUrl": image_url_from_brave_search_item(item),
+                    },
+                )
+
+            if len(results) >= 8:
+                break
 
     if not results:
-        raise HTTPException(status_code=404, detail="Brave Search did not return product candidates.")
-    return results
+        detail = "Brave Search did not return product candidates after trying broad JAN queries."
+        if errors:
+            detail = f"{detail} {' / '.join(errors[:3])}"
+        raise HTTPException(status_code=404, detail=detail)
+    return results[:8]
 
 
 async def search_web_results_for_jan(jan: str) -> tuple[list[dict[str, str | None]], str]:
