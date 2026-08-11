@@ -22,12 +22,17 @@ RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
 GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID") or os.getenv("GOOGLE_CSE_ID")
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+SUPABASE_LOOKUP_TABLE = os.getenv("SUPABASE_LOOKUP_TABLE", "product_lookup_candidates")
 LOOKUP_CACHE_PATH = Path(os.getenv("LOOKUP_CACHE_PATH", "data/lookup_candidates.json"))
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
 RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701"
 GOOGLE_CUSTOM_SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 
 
 def normalize_gemini_model(value: str | None) -> str:
@@ -363,7 +368,7 @@ def sort_cached_candidates(raw_candidates: list[dict[str, Any]]) -> list[LookupC
     return [candidate for candidate in response_candidates if candidate.id and candidate.boxName]
 
 
-def cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+def json_cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
     payload = load_lookup_cache()
     jan_entry = (payload.get("jans") or {}).get(jan)
     if not isinstance(jan_entry, dict):
@@ -374,7 +379,7 @@ def cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
     return sort_cached_candidates(raw_candidates)
 
 
-def store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+def json_store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
     payload = load_lookup_cache()
     jans = payload.setdefault("jans", {})
     jan_entry = jans.setdefault(jan, {"candidates": []})
@@ -423,7 +428,7 @@ def store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confid
     return sort_cached_candidates(raw_candidates)
 
 
-def apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
+def json_apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
     payload = load_lookup_cache()
     jan_entry = (payload.get("jans") or {}).get(jan)
     if not isinstance(jan_entry, dict):
@@ -445,6 +450,157 @@ def apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[L
         return sort_cached_candidates(raw_candidates)
 
     raise HTTPException(status_code=404, detail="指定された候補が見つかりませんでした。")
+
+
+def supabase_configured() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+
+
+def supabase_rest_url() -> str:
+    return f"{str(SUPABASE_URL).rstrip('/')}/rest/v1/{SUPABASE_LOOKUP_TABLE}"
+
+
+def supabase_headers(prefer: str | None = None) -> dict[str, str]:
+    headers = {
+        "apikey": str(SUPABASE_SERVICE_ROLE_KEY),
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+    return headers
+
+
+def supabase_row_to_candidate_dict(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(row.get("id") or ""),
+        "janCode": str(row.get("jan_code") or ""),
+        "boxName": str(row.get("box_name") or ""),
+        "imageUrl": row.get("image_url") if isinstance(row.get("image_url"), str) else None,
+        "sourceLabel": str(row.get("source_label") or ""),
+        "sourceUrl": row.get("source_url") if isinstance(row.get("source_url"), str) else None,
+        "confidence": row.get("confidence"),
+        "selectedCount": int(row.get("selected_count") or 0),
+        "rejectedCount": int(row.get("rejected_count") or 0),
+        "createdAt": row.get("created_at"),
+        "updatedAt": row.get("updated_at"),
+        "lastSelectedAt": row.get("last_selected_at"),
+    }
+
+
+def supabase_candidate_key(candidate: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(candidate.get("boxName") or "").strip().lower(),
+        str(candidate.get("sourceLabel") or "").strip().lower(),
+        str(candidate.get("sourceUrl") or "").strip().lower(),
+    )
+
+
+async def supabase_fetch_candidate_rows(jan: str) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.get(
+            supabase_rest_url(),
+            params={"jan_code": f"eq.{jan}", "select": "*"},
+            headers=supabase_headers(),
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase candidate cache request failed. status={response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    return payload if isinstance(payload, list) else []
+
+
+async def supabase_cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+    rows = await supabase_fetch_candidate_rows(jan)
+    return sort_cached_candidates([supabase_row_to_candidate_dict(row) for row in rows if isinstance(row, dict)])
+
+
+async def supabase_store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+    rows = await supabase_fetch_candidate_rows(jan)
+    existing_candidates = [supabase_row_to_candidate_dict(row) for row in rows if isinstance(row, dict)]
+    by_key = {supabase_candidate_key(candidate): candidate for candidate in existing_candidates}
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        for index, candidate in enumerate(candidates):
+            source_url = source_urls[index] if source_urls and index < len(source_urls) else None
+            key = (candidate.boxName.strip().lower(), candidate.sourceLabel.strip().lower(), (source_url or "").strip().lower())
+            existing = by_key.get(key)
+            if existing:
+                patch_payload: dict[str, Any] = {
+                    "box_name": candidate.boxName,
+                    "image_url": candidate.imageUrl or existing.get("imageUrl"),
+                    "source_label": candidate.sourceLabel,
+                    "source_url": source_url or existing.get("sourceUrl"),
+                    "updated_at": now_iso(),
+                }
+                if confidence is not None:
+                    patch_payload["confidence"] = max(float(existing.get("confidence") or 0), confidence)
+                response = await client.patch(
+                    supabase_rest_url(),
+                    params={"id": f"eq.{existing['id']}"},
+                    headers=supabase_headers(),
+                    json=patch_payload,
+                )
+            else:
+                response = await client.post(
+                    supabase_rest_url(),
+                    headers=supabase_headers(),
+                    json={
+                        "jan_code": jan,
+                        "box_name": candidate.boxName,
+                        "image_url": candidate.imageUrl,
+                        "source_label": candidate.sourceLabel,
+                        "source_url": source_url,
+                        "confidence": confidence,
+                    },
+                )
+            if response.status_code >= 400:
+                raise HTTPException(status_code=502, detail=f"Supabase candidate cache save failed. status={response.status_code}: {response.text[:200]}")
+
+    return await supabase_cached_candidates_for_jan(jan)
+
+
+async def supabase_apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
+    rows = await supabase_fetch_candidate_rows(jan)
+    matched = next((row for row in rows if isinstance(row, dict) and str(row.get("id")) == candidate_id), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail="指定された候補が見つかりませんでした。")
+
+    key = "selected_count" if action == "selected" else "rejected_count"
+    patch_payload: dict[str, Any] = {
+        key: max(0, int(matched.get(key) or 0) + 1),
+        "updated_at": now_iso(),
+    }
+    if action == "selected":
+        patch_payload["last_selected_at"] = patch_payload["updated_at"]
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.patch(
+            supabase_rest_url(),
+            params={"id": f"eq.{candidate_id}"},
+            headers=supabase_headers(),
+            json=patch_payload,
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase candidate feedback failed. status={response.status_code}: {response.text[:200]}")
+    return await supabase_cached_candidates_for_jan(jan)
+
+
+async def cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+    if supabase_configured():
+        return await supabase_cached_candidates_for_jan(jan)
+    return json_cached_candidates_for_jan(jan)
+
+
+async def store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+    if supabase_configured():
+        return await supabase_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls)
+    return json_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls)
+
+
+async def apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
+    if supabase_configured():
+        return await supabase_apply_candidate_feedback(jan, candidate_id, action)
+    return json_apply_candidate_feedback(jan, candidate_id, action)
 
 
 async def search_yahoo_item(jan: str) -> ProductCandidate:
@@ -769,7 +925,24 @@ def image_url_from_custom_search_item(item: dict[str, Any]) -> str | None:
     return None
 
 
-async def search_web_results_for_jan(jan: str) -> list[dict[str, str | None]]:
+def image_url_from_brave_search_item(item: dict[str, Any]) -> str | None:
+    thumbnail = item.get("thumbnail")
+    if isinstance(thumbnail, dict):
+        for key in ("src", "original"):
+            image_url = thumbnail.get(key)
+            if isinstance(image_url, str) and image_url:
+                return image_url
+
+    profile = item.get("profile")
+    if isinstance(profile, dict):
+        image_url = profile.get("img")
+        if isinstance(image_url, str) and image_url:
+            return image_url
+
+    return None
+
+
+async def search_google_results_for_jan(jan: str) -> list[dict[str, str | None]]:
     if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
         raise HTTPException(
             status_code=503,
@@ -834,6 +1007,83 @@ async def search_web_results_for_jan(jan: str) -> list[dict[str, str | None]]:
     if not results:
         raise HTTPException(status_code=404, detail="Google Custom Search did not return product candidates.")
     return results
+
+
+async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
+    if not BRAVE_SEARCH_API_KEY:
+        raise HTTPException(status_code=503, detail="BRAVE_SEARCH_API_KEY is required for Brave Search fallback.")
+
+    params = {
+        "q": f'"{jan}" JAN グッズ 商品',
+        "count": 8,
+        "country": "JP",
+        "search_lang": "ja",
+        "ui_lang": "ja-JP",
+        "safesearch": "moderate",
+        "spellcheck": 1,
+    }
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(BRAVE_SEARCH_ENDPOINT, params=params, headers=headers)
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not connect to Brave Search API.")
+
+    if response.status_code != 200:
+        try:
+            payload = response.json()
+            message = payload.get("error", {}).get("detail") or payload.get("message")
+        except ValueError:
+            message = None
+        detail = f"Brave Search API request failed. status={response.status_code}"
+        if isinstance(message, str) and message:
+            detail = f"{detail}: {message}"
+        raise HTTPException(status_code=502, detail=detail)
+
+    results: list[dict[str, str | None]] = []
+    for item in response.json().get("web", {}).get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        link = item.get("url")
+        title = item.get("title")
+        snippet = item.get("description")
+        if not isinstance(link, str) or not isinstance(title, str):
+            continue
+        results.append(
+            {
+                "title": title,
+                "snippet": snippet if isinstance(snippet, str) else "",
+                "link": link,
+                "imageUrl": image_url_from_brave_search_item(item),
+            },
+        )
+
+    if not results:
+        raise HTTPException(status_code=404, detail="Brave Search did not return product candidates.")
+    return results
+
+
+async def search_web_results_for_jan(jan: str) -> tuple[list[dict[str, str | None]], str]:
+    errors: list[str] = []
+    if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
+        try:
+            return await search_google_results_for_jan(jan), "Google Custom Search"
+        except HTTPException as exc:
+            errors.append(f"Google: {exc.detail}")
+
+    if BRAVE_SEARCH_API_KEY:
+        try:
+            return await search_brave_results_for_jan(jan), "Brave Search"
+        except HTTPException as exc:
+            errors.append(f"Brave: {exc.detail}")
+
+    detail = " / ".join(errors) if errors else "No web search provider is configured."
+    raise HTTPException(status_code=503, detail=detail)
 
 
 def parse_json_from_gemini(payload: dict[str, Any]) -> Any:
@@ -1094,12 +1344,12 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured.")
 
-    search_results = await search_web_results_for_jan(jan)
+    search_results, search_provider_label = await search_web_results_for_jan(jan)
     search_context = json.dumps(search_results, ensure_ascii=False)
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     prompt = (
         "You help identify Japanese character goods for a collection app. "
-        "You are given Google Custom Search results for a JAN code. "
+        f"You are given {search_provider_label} results for a JAN code. "
         "Return exactly one most likely product as JSON using only the provided search results. "
         "Prioritize official stores, manufacturer pages, product pages, and results that explicitly mention the JAN code. "
         "If only similar product names are found, lower confidence. "
@@ -1120,7 +1370,7 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         '"warnings":["notes"]'
         "}"
         f"\n\nJAN code: {jan}"
-        f"\n\nGoogle Custom Search results JSON:\n{search_context}"
+        f"\n\n{search_provider_label} results JSON:\n{search_context}"
     )
 
     request_body = {
@@ -1196,9 +1446,9 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
     if not box_name:
         raise HTTPException(status_code=404, detail="Web search fallback could not identify a product name.")
 
-    cached_candidates = store_lookup_candidates(
+    cached_candidates = await store_lookup_candidates(
         jan,
-        [ProductCandidate(boxName=box_name, imageUrl=image_url, sourceLabel="Google Custom Search + Gemini")],
+        [ProductCandidate(boxName=box_name, imageUrl=image_url, sourceLabel=f"{search_provider_label} + Gemini")],
         confidence=confidence,
         source_urls=source_urls[:1],
     )
@@ -1207,7 +1457,7 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         janCode=jan,
         boxName=box_name,
         imageUrl=image_url,
-        sourceLabel="Google Custom Search + Gemini",
+        sourceLabel=f"{search_provider_label} + Gemini",
         lineup=parse_lineup_items(parsed.get("lineup")),
         warnings=warnings,
         confidence=confidence,
@@ -1226,6 +1476,9 @@ async def health() -> dict[str, Any]:
         "geminiConfigured": bool(GEMINI_API_KEY),
         "geminiModel": GEMINI_MODEL,
         "googleSearchConfigured": bool(GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID),
+        "braveSearchConfigured": bool(BRAVE_SEARCH_API_KEY),
+        "supabaseCandidateCacheConfigured": supabase_configured(),
+        "candidateCacheTable": SUPABASE_LOOKUP_TABLE if supabase_configured() else str(LOOKUP_CACHE_PATH),
     }
 
 
@@ -1237,7 +1490,7 @@ async def lookup(
 ) -> LookupResponse:
     normalized_jan = validate_jan(jan)
 
-    cached_candidates = cached_candidates_for_jan(normalized_jan)
+    cached_candidates = await cached_candidates_for_jan(normalized_jan)
     if cached_candidates:
         selected = cached_candidates[0]
         ai_result = await analyze_lineup_with_gemini(selected.boxName) if analyze else AnalyzeLineupResponse()
@@ -1272,7 +1525,7 @@ async def lookup(
         fallback_result.warnings = [f"Product APIs did not return a usable result: {search_error.detail}", *fallback_result.warnings]
         return fallback_result
 
-    cached_candidates = store_lookup_candidates(normalized_jan, candidates)
+    cached_candidates = await store_lookup_candidates(normalized_jan, candidates)
     product = cached_candidates[0] if cached_candidates else candidates[0]
     ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
 
@@ -1293,7 +1546,7 @@ async def lookup(
 @app.post("/lookup/{jan}/feedback", response_model=list[LookupCandidate])
 async def lookup_candidate_feedback(jan: str, request: CandidateFeedbackRequest) -> list[LookupCandidate]:
     normalized_jan = validate_jan(jan)
-    return apply_candidate_feedback(normalized_jan, request.candidateId, request.action)
+    return await apply_candidate_feedback(normalized_jan, request.candidateId, request.action)
 
 
 @app.get("/search", response_model=list[ProductCandidate])

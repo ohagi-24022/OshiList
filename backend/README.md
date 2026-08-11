@@ -19,6 +19,7 @@ Required environment variables:
 ```text
 GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
 GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+BRAVE_SEARCH_API_KEY=your_brave_search_api_key
 ```
 
 If these values are missing, the fallback returns `503` and the app can continue to manual registration.
@@ -29,11 +30,53 @@ If Google returns `This project does not have the access to Custom Search JSON A
 
 `/lookup` stores all product candidates by JAN code and returns them sorted by feedback score. User selections increase `selectedCount`; "not this" feedback increases `rejectedCount` and lowers the candidate score.
 
+Production should use Supabase:
+
+```text
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_LOOKUP_TABLE=product_lookup_candidates
+```
+
+Create the cache table in Supabase:
+
+```sql
+create table if not exists product_lookup_candidates (
+  id uuid primary key default gen_random_uuid(),
+  jan_code text not null,
+  box_name text not null,
+  image_url text,
+  source_label text not null,
+  source_url text,
+  confidence numeric,
+  selected_count integer not null default 0,
+  rejected_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  last_selected_at timestamptz
+);
+
+create index if not exists product_lookup_candidates_jan_idx
+on product_lookup_candidates (jan_code);
+
+create unique index if not exists product_lookup_candidates_unique_idx
+on product_lookup_candidates (
+  jan_code,
+  lower(box_name),
+  lower(source_label),
+  coalesce(source_url, '')
+);
+```
+
+The backend uses the service role key server-side only. Do not expose it to the Expo app.
+
+For local development without Supabase, the JSON fallback can be used:
+
 ```text
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ```
 
-On Render, use a persistent disk or an external database before production launch. Without persistent storage, this local cache can be reset on redeploy.
+On Render, the local JSON cache can be reset on redeploy. Use Supabase before production launch.
 
 プロジェクトルートに `.env` を作成します。
 
@@ -46,6 +89,10 @@ GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
 GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
 GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+BRAVE_SEARCH_API_KEY=your_brave_search_api_key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_LOOKUP_TABLE=product_lookup_candidates
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 ```
@@ -94,6 +141,10 @@ GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
 GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
 GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+BRAVE_SEARCH_API_KEY=your_brave_search_api_key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_LOOKUP_TABLE=product_lookup_candidates
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 PYTHON_VERSION=3.12.8
