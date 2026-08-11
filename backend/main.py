@@ -1,7 +1,10 @@
 import html
+import hashlib
 import json
 import os
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -19,6 +22,7 @@ RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
 GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID") or os.getenv("GOOGLE_CSE_ID")
+LOOKUP_CACHE_PATH = Path(os.getenv("LOOKUP_CACHE_PATH", "data/lookup_candidates.json"))
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
 YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
@@ -75,6 +79,8 @@ class LookupResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     sourceUrls: list[str] = Field(default_factory=list)
+    selectedCandidateId: str | None = None
+    candidates: list["LookupCandidate"] = Field(default_factory=list)
 
 
 class AnalyzeLineupRequest(BaseModel):
@@ -90,6 +96,20 @@ class ProductCandidate(BaseModel):
     boxName: str
     imageUrl: str | None = None
     sourceLabel: str
+
+
+class LookupCandidate(ProductCandidate):
+    id: str
+    sourceUrl: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    selectedCount: int = 0
+    rejectedCount: int = 0
+    score: float = 0.0
+
+
+class CandidateFeedbackRequest(BaseModel):
+    candidateId: str = Field(..., min_length=1)
+    action: str = Field(..., pattern="^(selected|rejected)$")
 
 
 class ReceiptParseRequest(BaseModel):
@@ -286,6 +306,147 @@ def best_product_candidate(candidates: list[ProductCandidate]) -> ProductCandida
     return best
 
 
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def candidate_id_for(jan: str, box_name: str, source_label: str, source_url: str | None = None) -> str:
+    raw = "|".join([jan.strip(), box_name.strip().lower(), source_label.strip().lower(), (source_url or "").strip().lower()])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def load_lookup_cache() -> dict[str, Any]:
+    if not LOOKUP_CACHE_PATH.exists():
+        return {"jans": {}}
+    try:
+        with LOOKUP_CACHE_PATH.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {"jans": {}}
+    return payload if isinstance(payload, dict) else {"jans": {}}
+
+
+def save_lookup_cache(payload: dict[str, Any]) -> None:
+    LOOKUP_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOOKUP_CACHE_PATH.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+
+def candidate_score(candidate: dict[str, Any]) -> float:
+    selected = int(candidate.get("selectedCount") or 0)
+    rejected = int(candidate.get("rejectedCount") or 0)
+    base = float(candidate.get("confidence") or 0.0) * 3
+    quality = product_quality_score(str(candidate.get("boxName") or ""), candidate.get("imageUrl"))
+    return selected * 8 - rejected * 5 + base + quality
+
+
+def sort_cached_candidates(raw_candidates: list[dict[str, Any]]) -> list[LookupCandidate]:
+    sorted_candidates = sorted(raw_candidates, key=candidate_score, reverse=True)
+    response_candidates: list[LookupCandidate] = []
+    for candidate in sorted_candidates:
+        try:
+            response_candidates.append(
+                LookupCandidate(
+                    id=str(candidate.get("id") or ""),
+                    boxName=str(candidate.get("boxName") or ""),
+                    imageUrl=candidate.get("imageUrl") if isinstance(candidate.get("imageUrl"), str) else None,
+                    sourceLabel=str(candidate.get("sourceLabel") or ""),
+                    sourceUrl=candidate.get("sourceUrl") if isinstance(candidate.get("sourceUrl"), str) else None,
+                    confidence=float(candidate.get("confidence")) if candidate.get("confidence") is not None else None,
+                    selectedCount=max(0, int(candidate.get("selectedCount") or 0)),
+                    rejectedCount=max(0, int(candidate.get("rejectedCount") or 0)),
+                    score=candidate_score(candidate),
+                ),
+            )
+        except (TypeError, ValueError):
+            continue
+    return [candidate for candidate in response_candidates if candidate.id and candidate.boxName]
+
+
+def cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+    payload = load_lookup_cache()
+    jan_entry = (payload.get("jans") or {}).get(jan)
+    if not isinstance(jan_entry, dict):
+        return []
+    raw_candidates = jan_entry.get("candidates")
+    if not isinstance(raw_candidates, list):
+        return []
+    return sort_cached_candidates(raw_candidates)
+
+
+def store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+    payload = load_lookup_cache()
+    jans = payload.setdefault("jans", {})
+    jan_entry = jans.setdefault(jan, {"candidates": []})
+    raw_candidates = jan_entry.setdefault("candidates", [])
+    if not isinstance(raw_candidates, list):
+        raw_candidates = []
+        jan_entry["candidates"] = raw_candidates
+
+    by_id = {str(candidate.get("id")): candidate for candidate in raw_candidates if isinstance(candidate, dict) and candidate.get("id")}
+    by_key = {
+        (str(candidate.get("boxName") or "").strip().lower(), str(candidate.get("sourceLabel") or "").strip().lower()): candidate
+        for candidate in raw_candidates
+        if isinstance(candidate, dict)
+    }
+    current_time = now_iso()
+
+    for index, candidate in enumerate(candidates):
+        source_url = source_urls[index] if source_urls and index < len(source_urls) else None
+        candidate_id = candidate_id_for(jan, candidate.boxName, candidate.sourceLabel, source_url)
+        existing = by_id.get(candidate_id) or by_key.get((candidate.boxName.strip().lower(), candidate.sourceLabel.strip().lower()))
+        if existing is None:
+            existing = {
+                "id": candidate_id,
+                "janCode": jan,
+                "boxName": candidate.boxName,
+                "imageUrl": candidate.imageUrl,
+                "sourceLabel": candidate.sourceLabel,
+                "sourceUrl": source_url,
+                "confidence": confidence,
+                "selectedCount": 0,
+                "rejectedCount": 0,
+                "createdAt": current_time,
+            }
+            raw_candidates.append(existing)
+        else:
+            existing["boxName"] = candidate.boxName or existing.get("boxName")
+            existing["imageUrl"] = candidate.imageUrl or existing.get("imageUrl")
+            existing["sourceLabel"] = candidate.sourceLabel or existing.get("sourceLabel")
+            existing["sourceUrl"] = source_url or existing.get("sourceUrl")
+            if confidence is not None:
+                existing["confidence"] = max(float(existing.get("confidence") or 0), confidence)
+        existing["updatedAt"] = current_time
+
+    jan_entry["updatedAt"] = current_time
+    save_lookup_cache(payload)
+    return sort_cached_candidates(raw_candidates)
+
+
+def apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
+    payload = load_lookup_cache()
+    jan_entry = (payload.get("jans") or {}).get(jan)
+    if not isinstance(jan_entry, dict):
+        raise HTTPException(status_code=404, detail="候補キャッシュが見つかりませんでした。")
+    raw_candidates = jan_entry.get("candidates")
+    if not isinstance(raw_candidates, list):
+        raise HTTPException(status_code=404, detail="候補キャッシュが見つかりませんでした。")
+
+    for candidate in raw_candidates:
+        if not isinstance(candidate, dict) or candidate.get("id") != candidate_id:
+            continue
+        key = "selectedCount" if action == "selected" else "rejectedCount"
+        candidate[key] = max(0, int(candidate.get(key) or 0) + 1)
+        candidate["updatedAt"] = now_iso()
+        if action == "selected":
+            candidate["lastSelectedAt"] = candidate["updatedAt"]
+        jan_entry["updatedAt"] = candidate["updatedAt"]
+        save_lookup_cache(payload)
+        return sort_cached_candidates(raw_candidates)
+
+    raise HTTPException(status_code=404, detail="指定された候補が見つかりませんでした。")
+
+
 async def search_yahoo_item(jan: str) -> ProductCandidate:
     if not YAHOO_APP_ID:
         raise HTTPException(status_code=503, detail="YAHOO_APP_IDが未設定です。")
@@ -361,6 +522,69 @@ async def search_rakuten_item(jan: str) -> ProductCandidate:
     if not selected:
         raise HTTPException(status_code=404, detail="楽天市場の候補が中古・買取系に偏っていたため、商品API候補としては採用しませんでした。")
     return selected
+
+
+async def search_yahoo_jan_candidates(jan: str, limit: int = 8) -> list[ProductCandidate]:
+    if not YAHOO_APP_ID:
+        raise HTTPException(status_code=503, detail="YAHOO_APP_ID is not configured.")
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(
+                YAHOO_ENDPOINT,
+                params={"appid": YAHOO_APP_ID, "jan_code": jan, "image_size": 600, "results": limit},
+            )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not connect to Yahoo! Shopping API.")
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Yahoo! Shopping API request failed. Status={response.status_code}")
+
+    candidates: list[ProductCandidate] = []
+    for item in response.json().get("hits") or []:
+        product_name = item.get("name")
+        if not product_name:
+            continue
+        image = item.get("exImage") or item.get("image") or {}
+        image_url = image.get("url") or image.get("medium") or image.get("small")
+        candidates.append(ProductCandidate(boxName=product_name, imageUrl=image_url, sourceLabel="Yahoo!ショッピング"))
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="Yahoo! Shopping did not return JAN candidates.")
+    return sorted(candidates, key=lambda candidate: product_quality_score(candidate.boxName, candidate.imageUrl), reverse=True)
+
+
+async def search_product_candidates_for_jan(jan: str, provider: str = "auto", limit: int = 8) -> tuple[list[ProductCandidate], list[str]]:
+    provider_order = ["yahoo", "rakuten"] if provider == "auto" else [provider]
+    warnings: list[str] = []
+    candidates: list[ProductCandidate] = []
+    seen: set[str] = set()
+
+    for current_provider in provider_order:
+        try:
+            if current_provider == "yahoo":
+                provider_candidates = await search_yahoo_jan_candidates(jan, limit)
+            elif current_provider == "rakuten":
+                provider_candidates = await search_rakuten_candidates(jan, limit)
+            else:
+                warnings.append(f"Unsupported provider: {current_provider}")
+                continue
+        except HTTPException as exc:
+            warnings.append(f"{current_provider}: {exc.detail}")
+            continue
+
+        for candidate in provider_candidates:
+            if product_quality_score(candidate.boxName, candidate.imageUrl) < 0:
+                warnings.append(f"{current_provider}: 中古・買取系の候補を除外しました: {candidate.boxName}")
+                continue
+            key = candidate.boxName.strip()
+            if key and key not in seen:
+                seen.add(key)
+                candidates.append(candidate)
+            if len(candidates) >= limit:
+                return candidates, warnings
+
+    return candidates, warnings
 
 
 async def search_yahoo_candidates(query: str, limit: int = 3) -> list[ProductCandidate]:
@@ -972,6 +1196,13 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
     if not box_name:
         raise HTTPException(status_code=404, detail="Web search fallback could not identify a product name.")
 
+    cached_candidates = store_lookup_candidates(
+        jan,
+        [ProductCandidate(boxName=box_name, imageUrl=image_url, sourceLabel="Google Custom Search + Gemini")],
+        confidence=confidence,
+        source_urls=source_urls[:1],
+    )
+
     return LookupResponse(
         janCode=jan,
         boxName=box_name,
@@ -981,6 +1212,8 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         warnings=warnings,
         confidence=confidence,
         sourceUrls=source_urls[:5],
+        selectedCandidateId=cached_candidates[0].id if cached_candidates else None,
+        candidates=cached_candidates,
     )
 
 @app.get("/health")
@@ -1003,8 +1236,28 @@ async def lookup(
     provider: str = Query(default="auto", pattern="^(auto|yahoo|rakuten)$"),
 ) -> LookupResponse:
     normalized_jan = validate_jan(jan)
+
+    cached_candidates = cached_candidates_for_jan(normalized_jan)
+    if cached_candidates:
+        selected = cached_candidates[0]
+        ai_result = await analyze_lineup_with_gemini(selected.boxName) if analyze else AnalyzeLineupResponse()
+        return LookupResponse(
+            janCode=normalized_jan,
+            boxName=selected.boxName,
+            imageUrl=selected.imageUrl,
+            sourceLabel=f"{selected.sourceLabel} / キャッシュ",
+            lineup=ai_result.lineup,
+            warnings=["過去の候補キャッシュから表示しています。", *ai_result.warnings],
+            confidence=selected.confidence,
+            sourceUrls=[selected.sourceUrl] if selected.sourceUrl else [],
+            selectedCandidateId=selected.id,
+            candidates=cached_candidates,
+        )
+
     try:
-        product, search_warnings = await search_product(normalized_jan, provider)
+        candidates, search_warnings = await search_product_candidates_for_jan(normalized_jan, provider=provider, limit=8)
+        if not candidates:
+            raise HTTPException(status_code=404, detail="商品APIで候補が見つかりませんでした。")
     except HTTPException as search_error:
         try:
             fallback_result = await lookup_product_with_web_search(normalized_jan)
@@ -1019,6 +1272,8 @@ async def lookup(
         fallback_result.warnings = [f"Product APIs did not return a usable result: {search_error.detail}", *fallback_result.warnings]
         return fallback_result
 
+    cached_candidates = store_lookup_candidates(normalized_jan, candidates)
+    product = cached_candidates[0] if cached_candidates else candidates[0]
     ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
 
     return LookupResponse(
@@ -1030,7 +1285,15 @@ async def lookup(
         warnings=[*search_warnings, *ai_result.warnings],
         confidence=None,
         sourceUrls=[],
+        selectedCandidateId=product.id if isinstance(product, LookupCandidate) else None,
+        candidates=cached_candidates,
     )
+
+
+@app.post("/lookup/{jan}/feedback", response_model=list[LookupCandidate])
+async def lookup_candidate_feedback(jan: str, request: CandidateFeedbackRequest) -> list[LookupCandidate]:
+    normalized_jan = validate_jan(jan)
+    return apply_candidate_feedback(normalized_jan, request.candidateId, request.action)
 
 
 @app.get("/search", response_model=list[ProductCandidate])

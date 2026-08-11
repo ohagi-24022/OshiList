@@ -69,10 +69,24 @@ export type ProductLookupResult = {
   warnings?: string[];
   confidence?: number | null;
   sourceUrls?: string[];
+  selectedCandidateId?: string | null;
+  candidates?: ProductLookupCandidate[];
   lineup: Array<{
     characterName: string;
     variantName: string;
   }>;
+};
+
+export type ProductLookupCandidate = {
+  id: string;
+  boxName: string;
+  imageUrl: string | null;
+  sourceLabel: string;
+  sourceUrl?: string | null;
+  confidence?: number | null;
+  selectedCount: number;
+  rejectedCount: number;
+  score: number;
 };
 
 export type ProductSearchCandidate = {

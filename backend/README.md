@@ -25,6 +25,16 @@ If these values are missing, the fallback returns `503` and the app can continue
 
 If Google returns `This project does not have the access to Custom Search JSON API`, the current Google Cloud project cannot use the JSON API. In that case, the app falls back to manual registration instead of showing the raw Google error.
 
+## Candidate Cache
+
+`/lookup` stores all product candidates by JAN code and returns them sorted by feedback score. User selections increase `selectedCount`; "not this" feedback increases `rejectedCount` and lowers the candidate score.
+
+```text
+LOOKUP_CACHE_PATH=data/lookup_candidates.json
+```
+
+On Render, use a persistent disk or an external database before production launch. Without persistent storage, this local cache can be reset on redeploy.
+
 プロジェクトルートに `.env` を作成します。
 
 ```env
@@ -36,6 +46,7 @@ GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
 GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
 GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 ```
 
@@ -83,6 +94,7 @@ GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
 GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
 GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 PYTHON_VERSION=3.12.8
 ```

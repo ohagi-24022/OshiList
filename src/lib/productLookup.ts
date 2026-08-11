@@ -1,4 +1,4 @@
-import { PhotoInferResult, ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
+import { PhotoInferResult, ProductLookupCandidate, ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
 
 type LookupApiResponse = Partial<{
   janCode: string;
@@ -12,8 +12,29 @@ type LookupApiResponse = Partial<{
   confidence: number | null;
   sourceUrls: string[];
   source_urls: string[];
+  selectedCandidateId: string | null;
+  selected_candidate_id: string | null;
+  candidates: ProductLookupCandidateApiResponse[];
   lineup: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
   variants: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
+}>;
+
+type ProductLookupCandidateApiResponse = Partial<{
+  id: string;
+  boxName: string;
+  box_name: string;
+  imageUrl: string | null;
+  image_url: string | null;
+  sourceLabel: string;
+  source_label: string;
+  sourceUrl: string | null;
+  source_url: string | null;
+  confidence: number | null;
+  selectedCount: number;
+  selected_count: number;
+  rejectedCount: number;
+  rejected_count: number;
+  score: number;
 }>;
 
 type ProductCandidateApiResponse = Partial<{
@@ -94,6 +115,25 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
   }
 }
 
+function mapLookupCandidate(candidate: ProductLookupCandidateApiResponse): ProductLookupCandidate | null {
+  const id = candidate.id ?? '';
+  const boxName = candidate.boxName ?? candidate.box_name ?? '';
+  if (!id || !boxName.trim()) {
+    return null;
+  }
+  return {
+    id,
+    boxName,
+    imageUrl: candidate.imageUrl ?? candidate.image_url ?? null,
+    sourceLabel: candidate.sourceLabel ?? candidate.source_label ?? '商品候補',
+    sourceUrl: candidate.sourceUrl ?? candidate.source_url ?? null,
+    confidence: candidate.confidence ?? null,
+    selectedCount: Number(candidate.selectedCount ?? candidate.selected_count ?? 0),
+    rejectedCount: Number(candidate.rejectedCount ?? candidate.rejected_count ?? 0),
+    score: Number(candidate.score ?? 0),
+  };
+}
+
 export async function lookupProductByJan(janCode: string): Promise<ProductLookupResult> {
   const normalizedJan = janCode.trim();
   if (!/^\d{8,14}$/.test(normalizedJan)) {
@@ -125,6 +165,8 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
     warnings: payload?.warnings ?? [],
     confidence: payload?.confidence ?? null,
     sourceUrls: payload?.sourceUrls ?? payload?.source_urls ?? [],
+    selectedCandidateId: payload?.selectedCandidateId ?? payload?.selected_candidate_id ?? null,
+    candidates: (payload?.candidates ?? []).map(mapLookupCandidate).filter((candidate): candidate is ProductLookupCandidate => Boolean(candidate)),
     lineup: variants
       .map((variant) => ({
         characterName: variant.characterName ?? variant.character_name ?? '',
@@ -132,6 +174,29 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
       }))
       .filter((variant) => variant.characterName.trim().length > 0),
   };
+}
+
+export async function sendLookupCandidateFeedback(
+  janCode: string | null | undefined,
+  candidateId: string | null | undefined,
+  action: 'selected' | 'rejected',
+): Promise<ProductLookupCandidate[]> {
+  const normalizedJan = janCode?.trim();
+  const normalizedCandidateId = candidateId?.trim();
+  if (!normalizedJan || !normalizedCandidateId) {
+    return [];
+  }
+
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup/${encodeURIComponent(normalizedJan)}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ candidateId: normalizedCandidateId, action }),
+  });
+  const payload = (await response.json().catch(() => null)) as ProductLookupCandidateApiResponse[] | { detail?: string } | null;
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+  return (Array.isArray(payload) ? payload : []).map(mapLookupCandidate).filter((candidate): candidate is ProductLookupCandidate => Boolean(candidate));
 }
 
 export async function parseReceiptImage(imageBase64: string, mimeType = 'image/jpeg'): Promise<ReceiptParseResult> {

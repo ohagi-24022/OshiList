@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
 import { useTabReset } from '../../src/hooks/useTabReset';
 import { persistPickedImage, requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
-import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage } from '../../src/lib/productLookup';
+import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage, sendLookupCandidateFeedback } from '../../src/lib/productLookup';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useEvents } from '../../src/store/EventContext';
@@ -602,15 +602,45 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
   const { colors } = useAppTheme();
   const { addGoods, goods } = useGoods();
   const [seriesName, setSeriesName] = useState('');
+  const [candidates, setCandidates] = useState(result?.candidates ?? []);
+  const [activeCandidateId, setActiveCandidateId] = useState<string | null>(result?.selectedCandidateId ?? result?.candidates?.[0]?.id ?? null);
   const seriesSuggestions = useMemo(
     () => Array.from(new Set(goods.map((item) => item.seriesName).filter(Boolean))).slice(0, 10),
     [goods],
   );
-  const inferredIsRandom = result ? inferIsRandomGoods(result.boxName, result.lineup.length) : false;
+  const activeCandidate = candidates.find((candidate) => candidate.id === activeCandidateId) ?? candidates[0] ?? null;
+  const previewResult = result
+    ? {
+        ...result,
+        boxName: activeCandidate?.boxName ?? result.boxName,
+        imageUrl: activeCandidate?.imageUrl ?? result.imageUrl,
+        sourceLabel: activeCandidate?.sourceLabel ?? result.sourceLabel,
+        confidence: activeCandidate?.confidence ?? result.confidence,
+        sourceUrls: activeCandidate?.sourceUrl ? [activeCandidate.sourceUrl] : result.sourceUrls,
+      }
+    : null;
+  const inferredIsRandom = previewResult ? inferIsRandomGoods(previewResult.boxName, previewResult.lineup.length) : false;
 
   useEffect(() => {
     setSeriesName('');
+    setCandidates(result?.candidates ?? []);
+    setActiveCandidateId(result?.selectedCandidateId ?? result?.candidates?.[0]?.id ?? null);
   }, [result?.janCode, result?.boxName]);
+
+  const sendFeedback = async (action: 'selected' | 'rejected', candidateId = activeCandidateId) => {
+    try {
+      const updatedCandidates = await sendLookupCandidateFeedback(result?.janCode, candidateId, action);
+      if (updatedCandidates.length) {
+        setCandidates(updatedCandidates);
+        if (action === 'rejected') {
+          const nextCandidate = updatedCandidates.find((candidate) => candidate.id !== candidateId) ?? updatedCandidates[0] ?? null;
+          setActiveCandidateId(nextCandidate?.id ?? null);
+        }
+      }
+    } catch {
+      // Ranking feedback should never block registration.
+    }
+  };
 
   return (
     <Modal animationType="slide" transparent visible={!!result} onRequestClose={onClose}>
@@ -631,7 +661,45 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
 
           {!!result && (
             <>
-              <ProductPreview result={result} />
+              {candidates.length > 1 ? (
+                <View style={styles.productCandidatePicker}>
+                  <Text style={[styles.seriesPickerLabel, { color: colors.muted }]}>商品候補</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.productCandidateChips}>
+                    {candidates.map((candidate, index) => {
+                      const active = candidate.id === activeCandidateId;
+                      return (
+                        <Pressable
+                          key={candidate.id}
+                          onPress={() => setActiveCandidateId(candidate.id)}
+                          style={[
+                            styles.productCandidateChip,
+                            {
+                              backgroundColor: active ? colors.primary : colors.elevated,
+                              borderColor: active ? colors.primary : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text numberOfLines={2} style={[styles.productCandidateText, { color: active ? '#ffffff' : colors.text }]}>
+                            {index + 1}. {candidate.boxName}
+                          </Text>
+                          <Text style={[styles.productCandidateMeta, { color: active ? '#ffffff' : colors.muted }]}>
+                            選択 {candidate.selectedCount} / 違う {candidate.rejectedCount}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  <Pressable
+                    onPress={() => sendFeedback('rejected')}
+                    disabled={!activeCandidateId}
+                    style={[styles.rejectCandidateButton, { borderColor: colors.border, backgroundColor: colors.input }]}
+                  >
+                    <Ionicons color={colors.muted} name="thumbs-down-outline" size={16} />
+                    <Text style={[styles.rejectCandidateText, { color: colors.muted }]}>これは違う</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {previewResult ? <ProductPreview result={previewResult} /> : null}
               <View style={styles.seriesPicker}>
                 <Text style={[styles.seriesPickerLabel, { color: colors.muted }]}>シリーズ</Text>
                 <TextInput
@@ -663,13 +731,14 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                     <Pressable
                       key={`${candidate.characterName}-${candidate.variantName}`}
                       onPress={async () => {
+                        await sendFeedback('selected');
                         await addGoods({
                           janCode: result.janCode,
-                          boxName: result.boxName,
+                          boxName: previewResult?.boxName ?? result.boxName,
                           seriesName: seriesName.trim() || 'シリーズ未設定',
                           characterName: candidate.characterName,
                           variantName: candidate.variantName,
-                          imageUrl: result.imageUrl,
+                          imageUrl: previewResult?.imageUrl ?? result.imageUrl,
                           isRandom: inferredIsRandom,
                         });
                         onClose();
@@ -686,12 +755,13 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                 ) : (
                   <ManualGoodsForm
                     initialJanCode={result.janCode}
-                    initialBoxName={result.boxName}
+                    initialBoxName={previewResult?.boxName ?? result.boxName}
                     initialSeriesName={seriesName}
-                    initialImageUrl={result.imageUrl}
+                    initialImageUrl={previewResult?.imageUrl ?? result.imageUrl}
                     initialIsRandom={inferredIsRandom}
                     allowedStatuses={['owned', 'unorganized']}
                     onSubmit={async (input) => {
+                      await sendFeedback('selected');
                       await addGoods(input);
                       onClose();
                     }}
@@ -1256,6 +1326,29 @@ const styles = StyleSheet.create({
   productText: { flex: 1, justifyContent: 'center' },
   productName: { fontSize: 15, fontWeight: '900', lineHeight: 20 },
   productMeta: { fontSize: 12, marginTop: 5 },
+  productCandidatePicker: { gap: 8, marginTop: 12 },
+  productCandidateChips: { gap: 10, paddingRight: 6 },
+  productCandidateChip: {
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'space-between',
+    minHeight: 76,
+    padding: 10,
+    width: 230,
+  },
+  productCandidateText: { fontSize: 12, fontWeight: '900', lineHeight: 17 },
+  productCandidateMeta: { fontSize: 11, fontWeight: '800', marginTop: 8 },
+  rejectCandidateButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 12,
+  },
+  rejectCandidateText: { fontSize: 12, fontWeight: '900' },
   seriesPicker: { marginTop: 12 },
   seriesPickerLabel: { fontSize: 12, fontWeight: '800', marginBottom: 7 },
   seriesInput: {
