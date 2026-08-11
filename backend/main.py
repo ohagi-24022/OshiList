@@ -26,6 +26,7 @@ BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
 SUPABASE_LOOKUP_TABLE = os.getenv("SUPABASE_LOOKUP_TABLE", "product_lookup_candidates")
+WEB_SEARCH_PROVIDER = os.getenv("WEB_SEARCH_PROVIDER", "brave").strip().lower()
 LOOKUP_CACHE_PATH = Path(os.getenv("LOOKUP_CACHE_PATH", "data/lookup_candidates.json"))
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
@@ -1070,17 +1071,20 @@ async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
 
 async def search_web_results_for_jan(jan: str) -> tuple[list[dict[str, str | None]], str]:
     errors: list[str] = []
-    if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
-        try:
-            return await search_google_results_for_jan(jan), "Google Custom Search"
-        except HTTPException as exc:
-            errors.append(f"Google: {exc.detail}")
 
-    if BRAVE_SEARCH_API_KEY:
+    provider = WEB_SEARCH_PROVIDER if WEB_SEARCH_PROVIDER in {"brave", "google", "auto"} else "brave"
+
+    if provider in {"brave", "auto"} and BRAVE_SEARCH_API_KEY:
         try:
             return await search_brave_results_for_jan(jan), "Brave Search"
         except HTTPException as exc:
             errors.append(f"Brave: {exc.detail}")
+
+    if provider in {"google", "auto"} and GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
+        try:
+            return await search_google_results_for_jan(jan), "Google Custom Search"
+        except HTTPException as exc:
+            errors.append(f"Google: {exc.detail}")
 
     detail = " / ".join(errors) if errors else "No web search provider is configured."
     raise HTTPException(status_code=503, detail=detail)
@@ -1475,6 +1479,7 @@ async def health() -> dict[str, Any]:
         "rakutenAccessKeyConfigured": bool(RAKUTEN_ACCESS_KEY),
         "geminiConfigured": bool(GEMINI_API_KEY),
         "geminiModel": GEMINI_MODEL,
+        "webSearchProvider": WEB_SEARCH_PROVIDER if WEB_SEARCH_PROVIDER in {"brave", "google", "auto"} else "brave",
         "googleSearchConfigured": bool(GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID),
         "braveSearchConfigured": bool(BRAVE_SEARCH_API_KEY),
         "supabaseCandidateCacheConfigured": supabase_configured(),
