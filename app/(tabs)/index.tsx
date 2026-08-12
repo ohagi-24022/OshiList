@@ -21,11 +21,15 @@ export default function HomeScreen() {
   const { profile, profiles } = useProfile();
   const scrollRef = useRef<ScrollView>(null);
 
-  const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
-  const oshiGoods = useMemo(() => ownedGoods.filter((item) => isOshiGoods(item, profile)), [ownedGoods, profile]);
-  const recentGoods = useMemo(() => [...ownedGoods].sort((a, b) => b.id - a.id).slice(0, 4), [ownedGoods]);
-  const unorganizedGoods = useMemo(() => goods.filter((item) => item.status === 'unorganized'), [goods]);
-  const favoriteGoods = useMemo(() => ownedGoods.filter((item) => item.favorite).slice(0, 4), [ownedGoods]);
+  const collectionGoods = useMemo(
+    () => goods.filter((item) => (item.status === 'owned' || item.status === 'unorganized') && item.quantity > 0),
+    [goods],
+  );
+  const ownedGoods = useMemo(() => collectionGoods.filter((item) => item.status === 'owned'), [collectionGoods]);
+  const oshiGoods = useMemo(() => collectionGoods.filter((item) => isOshiGoods(item, profile)), [collectionGoods, profile]);
+  const recentGoods = useMemo(() => [...collectionGoods].sort((a, b) => b.id - a.id).slice(0, 4), [collectionGoods]);
+  const unorganizedGoods = useMemo(() => collectionGoods.filter((item) => item.status === 'unorganized'), [collectionGoods]);
+  const favoriteGoods = useMemo(() => collectionGoods.filter((item) => item.favorite).slice(0, 4), [collectionGoods]);
   const reservationGoods = useMemo(
     () => goods.filter((item) => item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped').slice(0, 4),
     [goods],
@@ -36,8 +40,8 @@ export default function HomeScreen() {
   );
   const lineupProgress = useMemo(() => {
     const groups = new Map<string, { boxName: string; seriesName: string; owned: Set<string>; total: Set<string> }>();
-    goods
-      .filter((item) => item.isRandom && item.status !== 'unorganized')
+    collectionGoods
+      .filter((item) => item.isRandom)
       .forEach((item) => {
         const key = `${item.seriesName}::${item.boxName}`;
         const group = groups.get(key) ?? {
@@ -56,8 +60,8 @@ export default function HomeScreen() {
     return Array.from(groups.values())
       .filter((group) => group.total.size >= 2)
       .sort((a, b) => b.total.size - a.total.size)[0] ?? null;
-  }, [goods]);
-  const totalQuantity = ownedGoods.reduce((sum, item) => sum + item.quantity, 0);
+  }, [collectionGoods]);
+  const totalQuantity = collectionGoods.reduce((sum, item) => sum + item.quantity, 0);
   const oshiQuantity = oshiGoods.reduce((sum, item) => sum + item.quantity, 0);
   const lineupRate = lineupProgress ? Math.round((lineupProgress.owned.size / lineupProgress.total.size) * 100) : 0;
   useTabReset(scrollRef);
@@ -69,7 +73,7 @@ export default function HomeScreen() {
           <View>
             <Text style={[styles.title, { color: colors.text }]}>ホーム</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : `${ownedGoods.length}種類 / ${totalQuantity}個を所持`}
+              {loading ? '読み込み中' : `${collectionGoods.length}種類 / ${totalQuantity}個を所持`}
             </Text>
           </View>
           <Pressable

@@ -26,7 +26,7 @@ function buildRandomLineups(goods: Goods[]) {
   const grouped = new Map<string, Goods[]>();
 
   goods.forEach((item) => {
-    if (!item.isRandom || item.status === 'unorganized') return;
+    if (!item.isRandom || (item.status !== 'owned' && item.status !== 'unorganized') || item.quantity <= 0) return;
     const key = [item.janCode ?? '', item.seriesName, item.boxName].join('::');
     grouped.set(key, [...(grouped.get(key) ?? []), item]);
   });
