@@ -106,7 +106,7 @@ function groupRandomGoods(goods: Goods[]) {
 }
 
 export default function HomeScreen() {
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ filter?: string; mode?: string }>();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { goods, loading } = useGoods();
@@ -123,6 +123,7 @@ export default function HomeScreen() {
   const [headerHeight, setHeaderHeight] = useState(190);
   const [selectedRandomGroup, setSelectedRandomGroup] = useState<RandomGoodsGroup | null>(null);
   const [screenMode, setScreenMode] = useState<'collection' | 'manage'>('collection');
+  const [manageUnorganizedOnly, setManageUnorganizedOnly] = useState(false);
 
   const ownedGoods = useMemo(() => goods.filter((item) => item.status === 'owned' && item.quantity > 0), [goods]);
   const characterGroups = useMemo(() => uniqueValues(ownedGoods.map((item) => item.characterName || '未分類')), [ownedGoods]);
@@ -190,9 +191,20 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (params.mode === 'manage') {
+      setManageUnorganizedOnly(params.filter === 'unorganized');
       setScreenMode('manage');
+      return;
     }
-  }, [params.mode]);
+    if (params.mode === 'collection') {
+      setManageUnorganizedOnly(false);
+      setScreenMode('collection');
+      return;
+    }
+    if (!params.mode) {
+      setManageUnorganizedOnly(false);
+      setScreenMode('collection');
+    }
+  }, [params.mode, params.filter]);
 
   const setHeaderHidden = (hidden: boolean) => {
     if (headerHiddenRef.current === hidden) return;
@@ -235,7 +247,16 @@ export default function HomeScreen() {
   };
 
   if (screenMode === 'manage') {
-    return <ManageGoodsPanel embedded onShowCollection={() => setScreenMode('collection')} />;
+    return (
+      <ManageGoodsPanel
+        embedded
+        initialUnorganizedOnly={manageUnorganizedOnly}
+        onShowCollection={() => {
+          setManageUnorganizedOnly(false);
+          setScreenMode('collection');
+        }}
+      />
+    );
   }
 
   return (
@@ -262,7 +283,10 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="管理を開く"
-            onPress={() => setScreenMode('manage')}
+            onPress={() => {
+              setManageUnorganizedOnly(false);
+              setScreenMode('manage');
+            }}
             style={[styles.summaryBadge, { borderColor: colors.border, backgroundColor: colors.surface }]}
           >
             <Ionicons color={colors.primary} name="albums-outline" size={18} />

@@ -134,7 +134,7 @@ export default function HomeScreen() {
         {unorganizedGoods.length ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/(tabs)/collection?mode=manage')}
+            onPress={() => router.push('/(tabs)/collection?mode=manage&filter=unorganized')}
             style={[styles.suggestionCard, { backgroundColor: colors.primary }]}
           >
             <View style={styles.suggestionIcon}>
@@ -158,7 +158,7 @@ export default function HomeScreen() {
             icon="albums-outline"
             label="コレクション"
             text="所持グッズを見る"
-            onPress={() => router.push('/(tabs)/collection')}
+            onPress={() => router.push('/(tabs)/collection?mode=collection')}
           />
           <QuickAction
             icon="person-circle-outline"
@@ -210,7 +210,7 @@ export default function HomeScreen() {
 
         {favoriteGoods.length ? (
           <>
-            <SectionHeader title="お気に入り" actionLabel="コレクションへ" onPress={() => router.push('/(tabs)/collection')} />
+            <SectionHeader title="お気に入り" actionLabel="コレクションへ" onPress={() => router.push('/(tabs)/collection?mode=collection')} />
             <View style={styles.tileGrid}>
               {favoriteGoods.map((item) => (
                 <View key={`favorite-${item.id}`} style={styles.tileItem}>
@@ -224,7 +224,7 @@ export default function HomeScreen() {
         <SectionHeader
           title="推しのグッズ"
           actionLabel="コレクションへ"
-          onPress={() => router.push('/(tabs)/collection')}
+          onPress={() => router.push('/(tabs)/collection?mode=collection')}
         />
         {oshiGoods.length ? (
           <View style={styles.tileGrid}>

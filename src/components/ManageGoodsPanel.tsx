@@ -26,10 +26,11 @@ import { Goods } from '../types';
 
 type Props = {
   embedded?: boolean;
+  initialUnorganizedOnly?: boolean;
   onShowCollection?: () => void;
 };
 
-export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) {
+export function ManageGoodsPanel({ embedded = false, initialUnorganizedOnly = false, onShowCollection }: Props) {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { goods, loading, removeGoods, updateGoods, bulkUpdateGoods, updateQuantity } = useGoods();
@@ -41,7 +42,7 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
   const [selected, setSelected] = useState<Goods | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [unorganizedOnly, setUnorganizedOnly] = useState(false);
+  const [unorganizedOnly, setUnorganizedOnly] = useState(initialUnorganizedOnly);
   const [bulkModalVisible, setBulkModalVisible] = useState(false);
   const [bulkSeriesName, setBulkSeriesName] = useState('');
   const [bulkCharacterName, setBulkCharacterName] = useState('');
@@ -94,6 +95,10 @@ export function ManageGoodsPanel({ embedded = false, onShowCollection }: Props) 
     if (!selected) return;
     openDetail();
   }, [openDetail, selected]);
+
+  useEffect(() => {
+    setUnorganizedOnly(initialUnorganizedOnly);
+  }, [initialUnorganizedOnly]);
 
   const toggleSelectionMode = () => {
     setSelectionMode((current) => {
