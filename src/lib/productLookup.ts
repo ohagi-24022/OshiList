@@ -15,6 +15,8 @@ type LookupApiResponse = Partial<{
   selectedCandidateId: string | null;
   selected_candidate_id: string | null;
   candidates: ProductLookupCandidateApiResponse[];
+  isRandom: boolean;
+  is_random: boolean;
   lineup: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
   variants: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
 }>;
@@ -167,6 +169,7 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
     sourceUrls: payload?.sourceUrls ?? payload?.source_urls ?? [],
     selectedCandidateId: payload?.selectedCandidateId ?? payload?.selected_candidate_id ?? null,
     candidates: (payload?.candidates ?? []).map(mapLookupCandidate).filter((candidate): candidate is ProductLookupCandidate => Boolean(candidate)),
+    isRandom: Boolean(payload?.isRandom ?? payload?.is_random ?? false),
     lineup: variants
       .map((variant) => ({
         characterName: variant.characterName ?? variant.character_name ?? '',

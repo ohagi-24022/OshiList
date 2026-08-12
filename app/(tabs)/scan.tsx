@@ -619,7 +619,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
         sourceUrls: activeCandidate?.sourceUrl ? [activeCandidate.sourceUrl] : result.sourceUrls,
       }
     : null;
-  const inferredIsRandom = previewResult ? inferIsRandomGoods(previewResult.boxName, previewResult.lineup.length) : false;
+  const inferredIsRandom = previewResult ? Boolean(previewResult.isRandom) || inferIsRandomGoods(previewResult.boxName, previewResult.lineup.length) : false;
 
   useEffect(() => {
     setSeriesName('');
@@ -660,7 +660,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
           </View>
 
           {!!result && (
-            <>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.productResultContent}>
               {candidates.length > 1 ? (
                 <View style={styles.productCandidatePicker}>
                   <Text style={[styles.seriesPickerLabel, { color: colors.muted }]}>商品候補</Text>
@@ -725,7 +725,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                   </ScrollView>
                 )}
               </View>
-              <ScrollView keyboardShouldPersistTaps="handled" style={styles.candidateList}>
+              <View style={styles.candidateList}>
                 {result.lineup.length > 0 ? (
                   result.lineup.map((candidate) => (
                     <Pressable
@@ -767,8 +767,8 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                     }}
                   />
                 )}
-              </ScrollView>
-            </>
+              </View>
+            </ScrollView>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -1306,6 +1306,7 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 22, fontWeight: '900' },
   sheetSubtitle: { fontSize: 12, marginTop: 2 },
   closeButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
+  productResultContent: { paddingBottom: 24 },
   photoSourcePreview: {
     alignItems: 'center',
     borderRadius: 8,

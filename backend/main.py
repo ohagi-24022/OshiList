@@ -34,6 +34,7 @@ YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch
 RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701"
 GOOGLE_CUSTOM_SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+BRAVE_IMAGE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/images/search"
 
 
 def normalize_gemini_model(value: str | None) -> str:
@@ -87,6 +88,7 @@ class LookupResponse(BaseModel):
     sourceUrls: list[str] = Field(default_factory=list)
     selectedCandidateId: str | None = None
     candidates: list["LookupCandidate"] = Field(default_factory=list)
+    isRandom: bool = False
 
 
 class AnalyzeLineupRequest(BaseModel):
@@ -288,6 +290,31 @@ NEW_PRODUCT_HINT_KEYWORDS = [
     "公式",
     "正規品",
 ]
+
+RANDOM_GOODS_KEYWORDS = [
+    "random",
+    "blind",
+    "trading",
+    "mystery",
+    "gacha",
+    "capsule",
+    "ランダム",
+    "ブラインド",
+    "トレーディング",
+    "ガチャ",
+    "くじ",
+    "全種",
+]
+
+
+def infer_is_random_goods(product_name: str, lineup_count: int = 0) -> bool:
+    normalized_name = product_name.lower()
+    return (
+        lineup_count > 0
+        or any(keyword.lower() in normalized_name for keyword in RANDOM_GOODS_KEYWORDS)
+        or re.search(r"全\s*\d+\s*種", product_name) is not None
+        or re.search(r"\d+\s*種\s*(ランダム|ブラインド|トレーディング)", product_name) is not None
+    )
 
 
 def product_quality_score(product_name: str, image_url: str | None = None) -> int:
@@ -1090,6 +1117,70 @@ async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
     return results[:8]
 
 
+def image_url_from_brave_image_item(item: dict[str, Any]) -> str | None:
+    properties = item.get("properties")
+    if isinstance(properties, dict):
+        image_url = properties.get("url")
+        if isinstance(image_url, str) and image_url:
+            return image_url
+
+    thumbnail = item.get("thumbnail")
+    if isinstance(thumbnail, dict):
+        image_url = thumbnail.get("src")
+        if isinstance(image_url, str) and image_url:
+            return image_url
+
+    image_url = item.get("url")
+    if isinstance(image_url, str) and re.search(r"\.(jpe?g|png|webp|gif)(\?|$)", image_url, re.IGNORECASE):
+        return image_url
+
+    return None
+
+
+async def search_brave_image_for_product(product_name: str) -> str | None:
+    if not BRAVE_SEARCH_API_KEY or not product_name.strip():
+        return None
+
+    queries = [
+        product_name,
+        f"{product_name} グッズ",
+        f"{product_name} 商品画像",
+    ]
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
+    }
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        for query in queries:
+            try:
+                response = await client.get(
+                    BRAVE_IMAGE_SEARCH_ENDPOINT,
+                    params={
+                        "q": query,
+                        "count": 8,
+                        "country": "JP",
+                        "search_lang": "ja",
+                        "safesearch": "strict",
+                        "spellcheck": 1,
+                    },
+                    headers=headers,
+                )
+            except httpx.RequestError:
+                continue
+            if response.status_code != 200:
+                continue
+            for item in response.json().get("results") or []:
+                if not isinstance(item, dict):
+                    continue
+                image_url = image_url_from_brave_image_item(item)
+                if image_url:
+                    return image_url
+
+    return None
+
+
 async def search_web_results_for_jan(jan: str) -> tuple[list[dict[str, str | None]], str]:
     errors: list[str] = []
 
@@ -1289,13 +1380,20 @@ async def infer_goods_from_photo_with_gemini(image_base64: str, mime_type: str) 
     except (TypeError, ValueError):
         confidence = 0.0
 
+    box_name = str(parsed.get("boxName") or parsed.get("box_name") or "").strip()
+    series_name = str(parsed.get("seriesName") or parsed.get("series_name") or "").strip()
+    character_name = str(parsed.get("characterName") or parsed.get("character_name") or "").strip()
+    goods_type = str(parsed.get("goodsType") or parsed.get("goods_type") or "").strip()
+    variant_name = str(parsed.get("variantName") or parsed.get("variant_name") or "").strip()
+    parsed_is_random = parsed.get("isRandom") if isinstance(parsed.get("isRandom"), bool) else parsed.get("is_random")
+
     result = PhotoInferResponse(
-        boxName=str(parsed.get("boxName") or parsed.get("box_name") or "").strip(),
-        seriesName=str(parsed.get("seriesName") or parsed.get("series_name") or "").strip(),
-        characterName=str(parsed.get("characterName") or parsed.get("character_name") or "").strip(),
-        goodsType=str(parsed.get("goodsType") or parsed.get("goods_type") or "").strip(),
-        variantName=str(parsed.get("variantName") or parsed.get("variant_name") or "").strip(),
-        isRandom=bool(parsed.get("isRandom") if "isRandom" in parsed else parsed.get("is_random", False)),
+        boxName=box_name,
+        seriesName=series_name,
+        characterName=character_name,
+        goodsType=goods_type,
+        variantName=variant_name,
+        isRandom=bool(parsed_is_random) or infer_is_random_goods(f"{box_name} {series_name} {goods_type} {variant_name}"),
         confidence=max(0.0, min(1.0, confidence)),
     )
     if result.confidence < 0.45:
@@ -1389,6 +1487,7 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         '"seriesName":"series or franchise name",'
         '"goodsType":"badge/acrylic stand/keychain/etc",'
         '"imageUrl":"product image URL or empty string",'
+        '"isRandom":false,'
         '"confidence":0.0,'
         '"sourceUrls":["source URL"],'
         '"lineup":[{"characterName":"character name","variantName":"variant name"}],'
@@ -1410,6 +1509,7 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
                     "seriesName": {"type": "string"},
                     "goodsType": {"type": "string"},
                     "imageUrl": {"type": "string"},
+                    "isRandom": {"type": "boolean"},
                     "confidence": {"type": "number"},
                     "sourceUrls": {"type": "array", "items": {"type": "string"}},
                     "lineup": {
@@ -1448,6 +1548,8 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
     image_url = str(parsed.get("imageUrl") or parsed.get("image_url") or "").strip() or None
     if not image_url:
         image_url = next((result["imageUrl"] for result in search_results if result.get("imageUrl")), None)
+    if not image_url:
+        image_url = await search_brave_image_for_product(box_name)
     try:
         confidence = float(parsed.get("confidence", 0.0))
     except (TypeError, ValueError):
@@ -1471,6 +1573,10 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
     if not box_name:
         raise HTTPException(status_code=404, detail="Web search fallback could not identify a product name.")
 
+    lineup = parse_lineup_items(parsed.get("lineup"))
+    parsed_is_random = parsed.get("isRandom") if isinstance(parsed.get("isRandom"), bool) else parsed.get("is_random")
+    is_random = bool(parsed_is_random) or infer_is_random_goods(box_name, len(lineup))
+
     cached_candidates = await store_lookup_candidates(
         jan,
         [ProductCandidate(boxName=box_name, imageUrl=image_url, sourceLabel=f"{search_provider_label} + Gemini")],
@@ -1483,12 +1589,13 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         boxName=box_name,
         imageUrl=image_url,
         sourceLabel=f"{search_provider_label} + Gemini",
-        lineup=parse_lineup_items(parsed.get("lineup")),
+        lineup=lineup,
         warnings=warnings,
         confidence=confidence,
         sourceUrls=source_urls[:5],
         selectedCandidateId=cached_candidates[0].id if cached_candidates else None,
         candidates=cached_candidates,
+        isRandom=is_random,
     )
 
 @app.get("/health")
@@ -1519,11 +1626,12 @@ async def lookup(
     cached_candidates = await cached_candidates_for_jan(normalized_jan)
     if cached_candidates:
         selected = cached_candidates[0]
+        selected_image_url = selected.imageUrl or await search_brave_image_for_product(selected.boxName)
         ai_result = await analyze_lineup_with_gemini(selected.boxName) if analyze else AnalyzeLineupResponse()
         return LookupResponse(
             janCode=normalized_jan,
             boxName=selected.boxName,
-            imageUrl=selected.imageUrl,
+            imageUrl=selected_image_url,
             sourceLabel=f"{selected.sourceLabel} / キャッシュ",
             lineup=ai_result.lineup,
             warnings=["過去の候補キャッシュから表示しています。", *ai_result.warnings],
@@ -1531,6 +1639,7 @@ async def lookup(
             sourceUrls=[selected.sourceUrl] if selected.sourceUrl else [],
             selectedCandidateId=selected.id,
             candidates=cached_candidates,
+            isRandom=infer_is_random_goods(selected.boxName, len(ai_result.lineup)),
         )
 
     try:
@@ -1566,6 +1675,7 @@ async def lookup(
         sourceUrls=[],
         selectedCandidateId=product.id if isinstance(product, LookupCandidate) else None,
         candidates=cached_candidates,
+        isRandom=infer_is_random_goods(product.boxName, len(ai_result.lineup)),
     )
 
 

@@ -71,6 +71,7 @@ export type ProductLookupResult = {
   sourceUrls?: string[];
   selectedCandidateId?: string | null;
   candidates?: ProductLookupCandidate[];
+  isRandom?: boolean;
   lineup: Array<{
     characterName: string;
     variantName: string;
