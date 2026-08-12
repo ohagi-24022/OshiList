@@ -619,7 +619,13 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
         sourceUrls: activeCandidate?.sourceUrl ? [activeCandidate.sourceUrl] : result.sourceUrls,
       }
     : null;
-  const inferredIsRandom = previewResult ? Boolean(previewResult.isRandom) || inferIsRandomGoods(previewResult.boxName, previewResult.lineup.length) : false;
+  const userLineup = useMemo(
+    () => (previewResult ? findUserLineupForProduct(previewResult, seriesName, goods) : []),
+    [goods, previewResult?.boxName, previewResult?.janCode, seriesName],
+  );
+  const displayLineup = result?.lineup.length ? result.lineup : userLineup;
+  const previewWithLineup = previewResult ? { ...previewResult, lineup: displayLineup } : null;
+  const inferredIsRandom = previewResult ? Boolean(previewResult.isRandom) || inferIsRandomGoods(previewResult.boxName, displayLineup.length) : false;
 
   useEffect(() => {
     setSeriesName('');
@@ -699,7 +705,10 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                   </Pressable>
                 </View>
               ) : null}
-              {previewResult ? <ProductPreview result={previewResult} /> : null}
+              {previewWithLineup ? <ProductPreview result={previewWithLineup} /> : null}
+              {!result.lineup.length && !!userLineup.length ? (
+                <Text style={[styles.lineupSourceHelp, { color: colors.muted }]}>過去に登録した内容からラインナップ候補を表示しています。</Text>
+              ) : null}
               <View style={styles.seriesPicker}>
                 <Text style={[styles.seriesPickerLabel, { color: colors.muted }]}>シリーズ</Text>
                 <TextInput
@@ -726,8 +735,8 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                 )}
               </View>
               <View style={styles.candidateList}>
-                {result.lineup.length > 0 ? (
-                  result.lineup.map((candidate) => (
+                {displayLineup.length > 0 ? (
+                  displayLineup.map((candidate) => (
                     <Pressable
                       key={`${candidate.characterName}-${candidate.variantName}`}
                       onPress={async () => {
@@ -735,7 +744,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                         await addGoods({
                           janCode: result.janCode,
                           boxName: previewResult?.boxName ?? result.boxName,
-                          seriesName: seriesName.trim() || 'シリーズ未設定',
+                          seriesName: seriesName.trim(),
                           characterName: candidate.characterName,
                           variantName: candidate.variantName,
                           imageUrl: previewResult?.imageUrl ?? result.imageUrl,
@@ -796,6 +805,31 @@ function tokenSimilarity(left: string, right: string) {
   });
 
   return overlap / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function findUserLineupForProduct(result: ProductLookupResult, seriesName: string, goods: Goods[]) {
+  const selectedSeries = seriesName.trim();
+  const normalizedBoxName = normalizeGoodsName(result.boxName);
+  const lineupMap = new Map<string, { characterName: string; variantName: string }>();
+
+  goods
+    .filter((item) => item.status === 'owned' || item.status === 'unorganized')
+    .filter((item) => {
+      if (result.janCode && item.janCode === result.janCode) return true;
+      if (tokenSimilarity(normalizedBoxName, item.boxName) >= 0.55) return true;
+      return !!selectedSeries && selectedSeries !== 'シリーズ未設定' && item.seriesName === selectedSeries && tokenSimilarity(normalizedBoxName, item.boxName) >= 0.35;
+    })
+    .forEach((item) => {
+      const characterName = item.characterName.trim();
+      const variantName = item.variantName.trim() || '通常版';
+      if (!characterName || characterName === '未分類') return;
+      const key = `${characterName}::${variantName}`;
+      if (!lineupMap.has(key)) {
+        lineupMap.set(key, { characterName, variantName });
+      }
+    });
+
+  return Array.from(lineupMap.values()).slice(0, 50);
 }
 
 function findExistingGoodsMatches(candidateName: string, goods: Goods[]) {
@@ -869,7 +903,7 @@ function ReceiptResultModal({
       await addGoods({
         janCode: null,
         boxName: candidate.boxName,
-        characterName: '未分類',
+        characterName: '',
         variantName: '通常版',
         imageUrl: registrationImageUri ? await persistPickedImage(registrationImageUri) : candidate.imageUrl,
         isRandom: inferIsRandomGoods(candidate.boxName),
@@ -1307,6 +1341,7 @@ const styles = StyleSheet.create({
   sheetSubtitle: { fontSize: 12, marginTop: 2 },
   closeButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
   productResultContent: { paddingBottom: 24 },
+  lineupSourceHelp: { fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 10 },
   photoSourcePreview: {
     alignItems: 'center',
     borderRadius: 8,

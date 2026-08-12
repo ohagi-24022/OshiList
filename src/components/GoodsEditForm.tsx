@@ -82,6 +82,7 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
 
   const disabled = !boxName.trim() || saving;
   const visibleStatuses = statuses.filter(([value]) => sourceStatusMap[source].includes(value));
+  const showStatusPicker = visibleStatuses.some(([value]) => value !== 'owned' && value !== 'unorganized');
   const tagsList = tags.split(',').map((tag) => tag.trim()).filter(Boolean);
 
   const toggleTag = (tag: string) => {
@@ -97,8 +98,8 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
       await onSave({
         janCode: janCode.trim() || null,
         boxName: boxName.trim(),
-        seriesName: seriesName.trim() || 'シリーズ未設定',
-        characterName: characterName.trim() || '未分類',
+        seriesName: seriesName.trim(),
+        characterName: characterName.trim(),
         variantName: variantName.trim() || '通常版',
         quantity: Math.max(0, Number(quantity) || 0),
         imageUrl: imageUrl.trim() || null,
@@ -286,23 +287,27 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
         <TextInput value={usageLocation} onChangeText={setUsageLocation} placeholder="例: 痛バッグ / 祭壇 / ディスプレイ棚" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.input, color: colors.text }]} />
       </View>
 
-      <View style={styles.statusRow}>
-        {visibleStatuses.map(([value, label]) => (
-          <Pressable
-            key={value}
-            onPress={() => setStatus(value)}
-            style={[
-              styles.statusButton,
-              { borderColor: colors.border },
-              status === value && { backgroundColor: colors.text, borderColor: colors.text },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: status === value ? colors.background : colors.text }]}>
-              {label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {showStatusPicker ? (
+        <View style={styles.statusRow}>
+          {visibleStatuses.map(([value, label]) => (
+            <Pressable
+              key={value}
+              onPress={() => setStatus(value)}
+              style={[
+                styles.statusButton,
+                { borderColor: colors.border },
+                status === value && { backgroundColor: colors.text, borderColor: colors.text },
+              ]}
+            >
+              <Text style={[styles.statusText, { color: status === value ? colors.background : colors.text }]}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Text style={[styles.autoStatusHelp, { color: colors.muted }]}>シリーズやキャラクターが未入力のものは、自動で未整理に入ります。</Text>
+      )}
 
       <View style={styles.actionRow}>
         <Pressable
@@ -353,6 +358,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 15, fontWeight: '900' },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  autoStatusHelp: { fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 14 },
   statusButton: {
     alignItems: 'center',
     borderRadius: 8,

@@ -78,6 +78,7 @@ export function ManualGoodsForm({
   const disabled = !boxName.trim() || saving;
   const canSavePreset = !!seriesName.trim() || !!characterName.trim();
   const visibleStatuses = statuses.filter(([value]) => (allowedStatuses ?? ['owned', 'unorganized']).includes(value));
+  const showStatusPicker = visibleStatuses.some(([value]) => value !== 'owned' && value !== 'unorganized');
 
   const savePreset = async () => {
     if (!canSavePreset) return;
@@ -100,8 +101,8 @@ export function ManualGoodsForm({
       await onSubmit({
         janCode: initialJanCode ?? null,
         boxName: boxName.trim(),
-        seriesName: seriesName.trim() || 'シリーズ未設定',
-        characterName: characterName.trim() || '未分類',
+        seriesName: seriesName.trim(),
+        characterName: characterName.trim(),
         variantName: variantName.trim() || '通常版',
         quantity: Math.max(0, Number(quantity) || 0),
         imageUrl: imageUrl.trim() || null,
@@ -235,23 +236,27 @@ export function ManualGoodsForm({
         style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
       />
 
-      <View style={styles.statusRow}>
-        {visibleStatuses.map(([value, label]) => (
-          <Pressable
-            key={value}
-            onPress={() => setStatus(value)}
-            style={[
-              styles.statusButton,
-              { borderColor: colors.border },
-              status === value && { backgroundColor: colors.text, borderColor: colors.text },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: status === value ? colors.background : colors.text }]}>
-              {label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {showStatusPicker ? (
+        <View style={styles.statusRow}>
+          {visibleStatuses.map(([value, label]) => (
+            <Pressable
+              key={value}
+              onPress={() => setStatus(value)}
+              style={[
+                styles.statusButton,
+                { borderColor: colors.border },
+                status === value && { backgroundColor: colors.text, borderColor: colors.text },
+              ]}
+            >
+              <Text style={[styles.statusText, { color: status === value ? colors.background : colors.text }]}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Text style={[styles.helper, { color: colors.muted }]}>シリーズやキャラクターが未入力のものは、自動で未整理に入ります。</Text>
+      )}
 
       <Pressable
         accessibilityLabel="グッズを保存"

@@ -23,22 +23,29 @@ function normalizedGoodsInput(input: GoodsInput) {
   const quantity = Math.max(0, input.quantity ?? 1);
   const targetQuantity = Math.max(0, input.targetQuantity ?? 0);
   const keepQuantity = Math.max(0, input.keepQuantity ?? 0);
-  const autoExchangeQuantity = Math.max(0, quantity - Math.max(targetQuantity, keepQuantity));
+  const hasExchangeBasis = targetQuantity > 0 || keepQuantity > 0;
+  const autoExchangeQuantity = hasExchangeBasis ? Math.max(0, quantity - Math.max(targetQuantity, keepQuantity)) : 0;
+  const rawSeriesName = input.seriesName?.trim() ?? '';
+  const rawCharacterName = input.characterName.trim();
+  const statusInput = input.status ?? 'owned';
+  const collectionStatus = statusInput === 'owned' || statusInput === 'unorganized';
+  const hasMissingOrganization = !rawSeriesName || !rawCharacterName;
+  const status = collectionStatus ? (hasMissingOrganization ? 'unorganized' : 'owned') : statusInput;
 
   return {
     janCode: input.janCode?.trim() || null,
     boxName: input.boxName.trim(),
-    seriesName: input.seriesName?.trim() || 'シリーズ未設定',
-    characterName: input.characterName.trim() || '未分類',
+    seriesName: rawSeriesName || 'シリーズ未設定',
+    characterName: rawCharacterName || '未分類',
     variantName: input.variantName.trim() || '通常版',
     quantity,
     imageUrl: input.imageUrl ?? null,
     isRandom: input.isRandom ?? false,
-    status: input.status ?? 'owned',
+    status,
     targetQuantity,
     keepQuantity,
     inUseQuantity: Math.max(0, input.inUseQuantity ?? 0),
-    exchangeQuantity: Math.max(autoExchangeQuantity, input.exchangeQuantity ?? 0),
+    exchangeQuantity: hasExchangeBasis ? Math.max(autoExchangeQuantity, input.exchangeQuantity ?? 0) : 0,
     storageLocation: input.storageLocation?.trim() || '',
     usageLocation: input.usageLocation?.trim() || '',
     collectionGoal: input.collectionGoal?.trim() || '',
@@ -147,6 +154,7 @@ async function migrate() {
       // Existing databases already have this column.
     }
   }
+  await db.runAsync('UPDATE goods SET exchange_quantity = 0 WHERE target_quantity = 0 AND keep_quantity = 0 AND exchange_quantity > 0');
 }
 
 export function GoodsProvider({ children }: PropsWithChildren) {
@@ -195,10 +203,16 @@ export function GoodsProvider({ children }: PropsWithChildren) {
           `UPDATE goods
            SET quantity = quantity + ?,
                image_url = COALESCE(image_url, ?),
+               exchange_quantity = CASE
+                 WHEN MAX(target_quantity, keep_quantity) > 0
+                 THEN MAX(quantity + ? - MAX(target_quantity, keep_quantity), 0)
+                 ELSE 0
+               END,
                updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
           normalized.quantity,
           normalized.imageUrl,
+          normalized.quantity,
           existing.id,
         );
         if (normalized.imageUrl && existing.image_url && existing.image_url !== normalized.imageUrl) {

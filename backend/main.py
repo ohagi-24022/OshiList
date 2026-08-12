@@ -370,7 +370,9 @@ def candidate_score(candidate: dict[str, Any]) -> float:
     rejected = int(candidate.get("rejectedCount") or 0)
     base = float(candidate.get("confidence") or 0.0) * 3
     quality = product_quality_score(str(candidate.get("boxName") or ""), candidate.get("imageUrl"))
-    return selected * 8 - rejected * 5 + base + quality
+    bounded_selected = min(selected, 20)
+    bounded_rejected = min(rejected, 20)
+    return bounded_selected * 8 - bounded_rejected * 5 + base + quality
 
 
 def sort_cached_candidates(raw_candidates: list[dict[str, Any]]) -> list[LookupCandidate]:
