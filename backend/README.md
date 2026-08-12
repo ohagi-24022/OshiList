@@ -42,6 +42,12 @@ Production should use Supabase:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 SUPABASE_LOOKUP_TABLE=product_lookup_candidates
+SUPABASE_CANDIDATE_VOTE_TABLE=product_lookup_candidate_votes
+SUPABASE_LINEUP_TABLE=product_lineup_suggestions
+SUPABASE_LINEUP_VOTE_TABLE=product_lineup_votes
+LEARNING_DEVICE_SALT=replace_with_random_server_secret
+LINEUP_ACCEPT_SELECTED_MIN=2
+LINEUP_REPORT_HIDE_MIN=3
 ```
 
 Create the cache table in Supabase:
@@ -76,6 +82,62 @@ on product_lookup_candidates (
 
 The backend uses the service role key server-side only. Do not expose it to the Expo app.
 
+## Shared Learning
+
+The app can improve product candidates and random-goods lineups from user selections. The Expo app stores a random anonymous device ID locally and sends it with feedback. The backend hashes that ID with `LEARNING_DEVICE_SALT` before storing votes, so repeated votes from the same device update the previous vote instead of adding unlimited counts.
+
+Lineup suggestions are returned to other users only when they pass the acceptance threshold:
+
+```text
+selected_count >= LINEUP_ACCEPT_SELECTED_MIN
+selected_count > rejected_count + report_count
+report_count < LINEUP_REPORT_HIDE_MIN
+```
+
+Create the shared learning tables in Supabase:
+
+```sql
+create table if not exists product_lookup_candidate_votes (
+  id uuid primary key default gen_random_uuid(),
+  jan_code text not null,
+  candidate_id text not null,
+  device_hash text not null,
+  action text not null check (action in ('selected', 'rejected')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists product_lookup_candidate_votes_unique_idx
+on product_lookup_candidate_votes (jan_code, candidate_id, device_hash);
+
+create table if not exists product_lineup_suggestions (
+  id uuid primary key default gen_random_uuid(),
+  jan_code text not null default '',
+  box_name text not null,
+  normalized_box_name text not null,
+  character_name text not null,
+  variant_name text not null default '通常版',
+  source text not null default 'user',
+  selected_count integer not null default 0,
+  rejected_count integer not null default 0,
+  report_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  last_selected_at timestamptz
+);
+
+create table if not exists product_lineup_votes (
+  id uuid primary key default gen_random_uuid(),
+  suggestion_id uuid not null references product_lineup_suggestions(id) on delete cascade,
+  device_hash text not null,
+  action text not null check (action in ('selected', 'rejected', 'reported')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+Keep RLS enabled and do not grant `anon` or `authenticated` access to these tables. The backend reads and writes them with the service role key only.
+
 For local development without Supabase, the JSON fallback can be used:
 
 ```text
@@ -100,6 +162,12 @@ WEB_SEARCH_PROVIDER=brave
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 SUPABASE_LOOKUP_TABLE=product_lookup_candidates
+SUPABASE_CANDIDATE_VOTE_TABLE=product_lookup_candidate_votes
+SUPABASE_LINEUP_TABLE=product_lineup_suggestions
+SUPABASE_LINEUP_VOTE_TABLE=product_lineup_votes
+LEARNING_DEVICE_SALT=replace_with_random_server_secret
+LINEUP_ACCEPT_SELECTED_MIN=2
+LINEUP_REPORT_HIDE_MIN=3
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 ```
@@ -153,6 +221,12 @@ WEB_SEARCH_PROVIDER=brave
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 SUPABASE_LOOKUP_TABLE=product_lookup_candidates
+SUPABASE_CANDIDATE_VOTE_TABLE=product_lookup_candidate_votes
+SUPABASE_LINEUP_TABLE=product_lineup_suggestions
+SUPABASE_LINEUP_VOTE_TABLE=product_lineup_votes
+LEARNING_DEVICE_SALT=replace_with_random_server_secret
+LINEUP_ACCEPT_SELECTED_MIN=2
+LINEUP_REPORT_HIDE_MIN=3
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 PYTHON_VERSION=3.12.8

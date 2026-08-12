@@ -75,6 +75,11 @@ export type ProductLookupResult = {
   lineup: Array<{
     characterName: string;
     variantName: string;
+    suggestionId?: string | null;
+    source?: string | null;
+    selectedCount?: number;
+    rejectedCount?: number;
+    reportCount?: number;
   }>;
 };
 

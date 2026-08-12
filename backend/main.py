@@ -16,6 +16,14 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+
+def int_env(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(os.getenv(name, str(default))))
+    except ValueError:
+        return default
+
+
 YAHOO_APP_ID = os.getenv("YAHOO_APP_ID")
 RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
 RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
@@ -26,6 +34,12 @@ BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
 SUPABASE_LOOKUP_TABLE = os.getenv("SUPABASE_LOOKUP_TABLE", "product_lookup_candidates")
+SUPABASE_CANDIDATE_VOTE_TABLE = os.getenv("SUPABASE_CANDIDATE_VOTE_TABLE", "product_lookup_candidate_votes")
+SUPABASE_LINEUP_TABLE = os.getenv("SUPABASE_LINEUP_TABLE", "product_lineup_suggestions")
+SUPABASE_LINEUP_VOTE_TABLE = os.getenv("SUPABASE_LINEUP_VOTE_TABLE", "product_lineup_votes")
+LEARNING_DEVICE_SALT = os.getenv("LEARNING_DEVICE_SALT") or SUPABASE_SERVICE_ROLE_KEY or "oshilist-local-learning"
+LINEUP_ACCEPT_SELECTED_MIN = int_env("LINEUP_ACCEPT_SELECTED_MIN", 2)
+LINEUP_REPORT_HIDE_MIN = int_env("LINEUP_REPORT_HIDE_MIN", 3)
 WEB_SEARCH_PROVIDER = os.getenv("WEB_SEARCH_PROVIDER", "brave").strip().lower()
 LOOKUP_CACHE_PATH = Path(os.getenv("LOOKUP_CACHE_PATH", "data/lookup_candidates.json"))
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
@@ -75,6 +89,11 @@ app.add_middleware(
 class LineupItem(BaseModel):
     characterName: str = Field(..., min_length=1)
     variantName: str = Field(default="通常版", min_length=1)
+    suggestionId: str | None = None
+    source: str | None = None
+    selectedCount: int = 0
+    rejectedCount: int = 0
+    reportCount: int = 0
 
 
 class LookupResponse(BaseModel):
@@ -118,6 +137,17 @@ class LookupCandidate(ProductCandidate):
 class CandidateFeedbackRequest(BaseModel):
     candidateId: str = Field(..., min_length=1)
     action: str = Field(..., pattern="^(selected|rejected)$")
+    deviceId: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class LineupFeedbackRequest(BaseModel):
+    janCode: str | None = Field(default=None, min_length=8, max_length=14)
+    boxName: str = Field(..., min_length=1, max_length=240)
+    characterName: str = Field(..., min_length=1, max_length=120)
+    variantName: str = Field(default="通常版", min_length=1, max_length=120)
+    deviceId: str | None = Field(default=None, min_length=8, max_length=128)
+    suggestionId: str | None = Field(default=None, min_length=1, max_length=80)
+    action: str = Field(..., pattern="^(selected|rejected|reported)$")
 
 
 class ReceiptParseRequest(BaseModel):
@@ -210,13 +240,15 @@ async def privacy_page() -> str:
             <li>ユーザーが入力またはスキャンしたJANコード</li>
             <li>商品検索APIから取得した商品名、商品画像URL</li>
             <li>ユーザーがアプリ内で登録したグッズ情報</li>
+            <li>商品候補やラインナップ候補の選択、却下、通報の情報</li>
+            <li>共有学習の重複投票防止に使う匿名端末IDのハッシュ値</li>
           </ul>
           <h2>利用目的</h2>
-          <p>商品登録の補助、コレクション管理、重複購入防止のために利用します。</p>
+          <p>商品登録の補助、コレクション管理、重複購入防止、商品候補やランダムグッズのラインナップ候補の精度改善、荒らし対策のために利用します。</p>
           <h2>外部API</h2>
-          <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini APIを利用する場合があります。</p>
+          <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIを利用する場合があります。</p>
           <h2>保存</h2>
-          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索とラインナップ解析の中継に利用します。</p>
+          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索、ラインナップ解析、共有学習候補の保存と集計に利用します。匿名端末IDはサーバー側でハッシュ化して保存し、氏名やメールアドレス等とは紐付けません。</p>
         </main>
       </body>
     </html>
@@ -346,6 +378,33 @@ def now_iso() -> str:
 def candidate_id_for(jan: str, box_name: str, source_label: str, source_url: str | None = None) -> str:
     raw = "|".join([jan.strip(), box_name.strip().lower(), source_label.strip().lower(), (source_url or "").strip().lower()])
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def learning_device_hash(device_id: str | None) -> str | None:
+    normalized = (device_id or "").strip()
+    if len(normalized) < 8:
+        return None
+    raw = f"{LEARNING_DEVICE_SALT}|{normalized}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def normalize_learning_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def normalize_box_name_for_learning(value: str) -> str:
+    normalized = normalize_learning_text(value)
+    normalized = re.sub(r"[【】「」『』（）()\[\]<>＜＞]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def shared_lineup_is_accepted(selected_count: int, rejected_count: int, report_count: int) -> bool:
+    return (
+        selected_count >= LINEUP_ACCEPT_SELECTED_MIN
+        and selected_count > rejected_count + report_count
+        and report_count < LINEUP_REPORT_HIDE_MIN
+    )
 
 
 def load_lookup_cache() -> dict[str, Any]:
@@ -490,6 +549,10 @@ def supabase_rest_url() -> str:
     return f"{str(SUPABASE_URL).rstrip('/')}/rest/v1/{SUPABASE_LOOKUP_TABLE}"
 
 
+def supabase_table_url(table_name: str) -> str:
+    return f"{str(SUPABASE_URL).rstrip('/')}/rest/v1/{table_name}"
+
+
 def supabase_headers(prefer: str | None = None) -> dict[str, str]:
     headers = {
         "apikey": str(SUPABASE_SERVICE_ROLE_KEY),
@@ -499,6 +562,76 @@ def supabase_headers(prefer: str | None = None) -> dict[str, str]:
     if prefer:
         headers["Prefer"] = prefer
     return headers
+
+
+def supabase_lineup_row_to_item(row: dict[str, Any]) -> LineupItem:
+    return LineupItem(
+        characterName=str(row.get("character_name") or "").strip(),
+        variantName=str(row.get("variant_name") or "通常版").strip() or "通常版",
+        suggestionId=str(row.get("id") or "") or None,
+        source=str(row.get("source") or "shared"),
+        selectedCount=max(0, int(row.get("selected_count") or 0)),
+        rejectedCount=max(0, int(row.get("rejected_count") or 0)),
+        reportCount=max(0, int(row.get("report_count") or 0)),
+    )
+
+
+async def supabase_fetch_shared_lineup(jan: str | None, box_name: str) -> list[LineupItem]:
+    if not supabase_configured():
+        return []
+
+    normalized_box_name = normalize_box_name_for_learning(box_name)
+    if not normalized_box_name:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    queries = []
+    if jan:
+        queries.append({"jan_code": f"eq.{jan}"})
+    queries.append({"normalized_box_name": f"eq.{normalized_box_name}"})
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        for params in queries:
+            response = await client.get(
+                supabase_table_url(SUPABASE_LINEUP_TABLE),
+                params={"select": "*", **params},
+                headers=supabase_headers(),
+            )
+            if response.status_code >= 400:
+                continue
+            payload = response.json()
+            for row in payload if isinstance(payload, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                row_id = str(row.get("id") or "")
+                if row_id and row_id not in seen_ids:
+                    seen_ids.add(row_id)
+                    rows.append(row)
+    accepted = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        selected = int(row.get("selected_count") or 0)
+        rejected = int(row.get("rejected_count") or 0)
+        reported = int(row.get("report_count") or 0)
+        if shared_lineup_is_accepted(selected, rejected, reported):
+            accepted.append(supabase_lineup_row_to_item(row))
+
+    accepted.sort(key=lambda item: (item.selectedCount - item.rejectedCount - item.reportCount, item.selectedCount), reverse=True)
+    return accepted[:50]
+
+
+def merge_lineup_items(primary: list[LineupItem], secondary: list[LineupItem]) -> list[LineupItem]:
+    merged: list[LineupItem] = []
+    seen: set[tuple[str, str]] = set()
+    for item in [*primary, *secondary]:
+        key = (normalize_learning_text(item.characterName), normalize_learning_text(item.variantName or "通常版"))
+        if not key[0] or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged
 
 
 def supabase_row_to_candidate_dict(row: dict[str, Any]) -> dict[str, Any]:
@@ -589,11 +722,68 @@ async def supabase_store_lookup_candidates(jan: str, candidates: list[ProductCan
     return await supabase_cached_candidates_for_jan(jan)
 
 
-async def supabase_apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
+async def supabase_apply_candidate_feedback(jan: str, candidate_id: str, action: str, device_id: str | None = None) -> list[LookupCandidate]:
     rows = await supabase_fetch_candidate_rows(jan)
     matched = next((row for row in rows if isinstance(row, dict) and str(row.get("id")) == candidate_id), None)
     if not matched:
         raise HTTPException(status_code=404, detail="指定された候補が見つかりませんでした。")
+
+    device_hash = learning_device_hash(device_id)
+    if device_hash:
+        async with httpx.AsyncClient(timeout=12) as client:
+            vote_response = await client.get(
+                supabase_table_url(SUPABASE_CANDIDATE_VOTE_TABLE),
+                params={
+                    "jan_code": f"eq.{jan}",
+                    "candidate_id": f"eq.{candidate_id}",
+                    "device_hash": f"eq.{device_hash}",
+                    "select": "*",
+                    "limit": "1",
+                },
+                headers=supabase_headers(),
+            )
+            if vote_response.status_code < 400:
+                votes = vote_response.json() if isinstance(vote_response.json(), list) else []
+                existing_vote = votes[0] if votes else None
+                previous_action = str(existing_vote.get("action")) if isinstance(existing_vote, dict) else None
+                if previous_action == action:
+                    return await supabase_cached_candidates_for_jan(jan)
+
+                selected_delta = (1 if action == "selected" else 0) - (1 if previous_action == "selected" else 0)
+                rejected_delta = (1 if action == "rejected" else 0) - (1 if previous_action == "rejected" else 0)
+                now = now_iso()
+                if existing_vote:
+                    response = await client.patch(
+                        supabase_table_url(SUPABASE_CANDIDATE_VOTE_TABLE),
+                        params={"id": f"eq.{existing_vote['id']}"},
+                        headers=supabase_headers(),
+                        json={"action": action, "updated_at": now},
+                    )
+                else:
+                    response = await client.post(
+                        supabase_table_url(SUPABASE_CANDIDATE_VOTE_TABLE),
+                        headers=supabase_headers(),
+                        json={"jan_code": jan, "candidate_id": candidate_id, "device_hash": device_hash, "action": action},
+                    )
+                if response.status_code >= 400:
+                    raise HTTPException(status_code=502, detail=f"Supabase candidate vote failed. status={response.status_code}: {response.text[:200]}")
+
+                patch_payload: dict[str, Any] = {
+                    "selected_count": max(0, int(matched.get("selected_count") or 0) + selected_delta),
+                    "rejected_count": max(0, int(matched.get("rejected_count") or 0) + rejected_delta),
+                    "updated_at": now,
+                }
+                if action == "selected":
+                    patch_payload["last_selected_at"] = now
+                update_response = await client.patch(
+                    supabase_rest_url(),
+                    params={"id": f"eq.{candidate_id}"},
+                    headers=supabase_headers(),
+                    json=patch_payload,
+                )
+                if update_response.status_code >= 400:
+                    raise HTTPException(status_code=502, detail=f"Supabase candidate feedback failed. status={update_response.status_code}: {update_response.text[:200]}")
+                return await supabase_cached_candidates_for_jan(jan)
 
     key = "selected_count" if action == "selected" else "rejected_count"
     patch_payload: dict[str, Any] = {
@@ -627,10 +817,141 @@ async def store_lookup_candidates(jan: str, candidates: list[ProductCandidate], 
     return json_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls)
 
 
-async def apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
+async def apply_candidate_feedback(jan: str, candidate_id: str, action: str, device_id: str | None = None) -> list[LookupCandidate]:
     if supabase_configured():
-        return await supabase_apply_candidate_feedback(jan, candidate_id, action)
+        return await supabase_apply_candidate_feedback(jan, candidate_id, action, device_id=device_id)
     return json_apply_candidate_feedback(jan, candidate_id, action)
+
+
+async def supabase_find_lineup_suggestion(request: LineupFeedbackRequest) -> dict[str, Any] | None:
+    normalized_box_name = normalize_box_name_for_learning(request.boxName)
+    normalized_character = normalize_learning_text(request.characterName)
+    normalized_variant = normalize_learning_text(request.variantName or "通常版")
+    jan_code = validate_jan(request.janCode) if request.janCode else ""
+
+    if request.suggestionId:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.get(
+                supabase_table_url(SUPABASE_LINEUP_TABLE),
+                params={"id": f"eq.{request.suggestionId}", "select": "*", "limit": "1"},
+                headers=supabase_headers(),
+            )
+        if response.status_code < 400:
+            payload = response.json()
+            if isinstance(payload, list) and payload:
+                return payload[0] if isinstance(payload[0], dict) else None
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.get(
+            supabase_table_url(SUPABASE_LINEUP_TABLE),
+            params={
+                "normalized_box_name": f"eq.{normalized_box_name}",
+                "select": "*",
+                "limit": "100",
+            },
+            headers=supabase_headers(),
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase lineup lookup failed. status={response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    for row in payload if isinstance(payload, list) else []:
+        if not isinstance(row, dict):
+            continue
+        if (
+            normalize_learning_text(str(row.get("character_name") or "")) == normalized_character
+            and normalize_learning_text(str(row.get("variant_name") or "通常版")) == normalized_variant
+        ):
+            return row
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.post(
+            supabase_table_url(SUPABASE_LINEUP_TABLE),
+            headers=supabase_headers(prefer="return=representation"),
+            json={
+                "jan_code": jan_code,
+                "box_name": request.boxName.strip(),
+                "normalized_box_name": normalized_box_name,
+                "character_name": request.characterName.strip(),
+                "variant_name": request.variantName.strip() or "通常版",
+                "source": "user",
+            },
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase lineup save failed. status={response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    if isinstance(payload, list) and payload:
+        return payload[0] if isinstance(payload[0], dict) else None
+    return None
+
+
+async def apply_lineup_feedback(request: LineupFeedbackRequest) -> list[LineupItem]:
+    if not supabase_configured():
+        return []
+
+    device_hash = learning_device_hash(request.deviceId)
+    if not device_hash:
+        raise HTTPException(status_code=400, detail="共有学習には端末IDが必要です。")
+
+    suggestion = await supabase_find_lineup_suggestion(request)
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="ラインナップ候補を保存できませんでした。")
+
+    suggestion_id = str(suggestion.get("id") or "")
+    if not suggestion_id:
+        raise HTTPException(status_code=404, detail="ラインナップ候補IDが見つかりませんでした。")
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        vote_response = await client.get(
+            supabase_table_url(SUPABASE_LINEUP_VOTE_TABLE),
+            params={"suggestion_id": f"eq.{suggestion_id}", "device_hash": f"eq.{device_hash}", "select": "*", "limit": "1"},
+            headers=supabase_headers(),
+        )
+        if vote_response.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Supabase lineup vote lookup failed. status={vote_response.status_code}: {vote_response.text[:200]}")
+        votes = vote_response.json()
+        existing_vote = votes[0] if isinstance(votes, list) and votes else None
+        previous_action = str(existing_vote.get("action")) if isinstance(existing_vote, dict) else None
+        if previous_action == request.action:
+            return await supabase_fetch_shared_lineup(request.janCode, request.boxName)
+
+        now = now_iso()
+        if existing_vote:
+            response = await client.patch(
+                supabase_table_url(SUPABASE_LINEUP_VOTE_TABLE),
+                params={"id": f"eq.{existing_vote['id']}"},
+                headers=supabase_headers(),
+                json={"action": request.action, "updated_at": now},
+            )
+        else:
+            response = await client.post(
+                supabase_table_url(SUPABASE_LINEUP_VOTE_TABLE),
+                headers=supabase_headers(),
+                json={"suggestion_id": suggestion_id, "device_hash": device_hash, "action": request.action},
+            )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Supabase lineup vote failed. status={response.status_code}: {response.text[:200]}")
+
+        selected_delta = (1 if request.action == "selected" else 0) - (1 if previous_action == "selected" else 0)
+        rejected_delta = (1 if request.action == "rejected" else 0) - (1 if previous_action == "rejected" else 0)
+        report_delta = (1 if request.action == "reported" else 0) - (1 if previous_action == "reported" else 0)
+        patch_payload: dict[str, Any] = {
+            "selected_count": max(0, int(suggestion.get("selected_count") or 0) + selected_delta),
+            "rejected_count": max(0, int(suggestion.get("rejected_count") or 0) + rejected_delta),
+            "report_count": max(0, int(suggestion.get("report_count") or 0) + report_delta),
+            "updated_at": now,
+        }
+        if request.action == "selected":
+            patch_payload["last_selected_at"] = now
+        update_response = await client.patch(
+            supabase_table_url(SUPABASE_LINEUP_TABLE),
+            params={"id": f"eq.{suggestion_id}"},
+            headers=supabase_headers(),
+            json=patch_payload,
+        )
+        if update_response.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Supabase lineup feedback failed. status={update_response.status_code}: {update_response.text[:200]}")
+
+    return await supabase_fetch_shared_lineup(request.janCode, request.boxName)
 
 
 async def search_yahoo_item(jan: str) -> ProductCandidate:
@@ -1576,6 +1897,8 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         raise HTTPException(status_code=404, detail="Web search fallback could not identify a product name.")
 
     lineup = parse_lineup_items(parsed.get("lineup"))
+    shared_lineup = await supabase_fetch_shared_lineup(jan, box_name)
+    lineup = merge_lineup_items(lineup, shared_lineup)
     parsed_is_random = parsed.get("isRandom") if isinstance(parsed.get("isRandom"), bool) else parsed.get("is_random")
     is_random = bool(parsed_is_random) or infer_is_random_goods(box_name, len(lineup))
 
@@ -1614,6 +1937,12 @@ async def health() -> dict[str, Any]:
         "braveSearchConfigured": bool(BRAVE_SEARCH_API_KEY),
         "supabaseCandidateCacheConfigured": supabase_configured(),
         "candidateCacheTable": SUPABASE_LOOKUP_TABLE if supabase_configured() else str(LOOKUP_CACHE_PATH),
+        "sharedLearningConfigured": supabase_configured(),
+        "candidateVoteTable": SUPABASE_CANDIDATE_VOTE_TABLE,
+        "lineupTable": SUPABASE_LINEUP_TABLE,
+        "lineupVoteTable": SUPABASE_LINEUP_VOTE_TABLE,
+        "lineupAcceptSelectedMin": LINEUP_ACCEPT_SELECTED_MIN,
+        "lineupReportHideMin": LINEUP_REPORT_HIDE_MIN,
     }
 
 
@@ -1630,18 +1959,20 @@ async def lookup(
         selected = cached_candidates[0]
         selected_image_url = selected.imageUrl or await search_brave_image_for_product(selected.boxName)
         ai_result = await analyze_lineup_with_gemini(selected.boxName) if analyze else AnalyzeLineupResponse()
+        shared_lineup = await supabase_fetch_shared_lineup(normalized_jan, selected.boxName)
+        lineup = merge_lineup_items(ai_result.lineup, shared_lineup)
         return LookupResponse(
             janCode=normalized_jan,
             boxName=selected.boxName,
             imageUrl=selected_image_url,
             sourceLabel=f"{selected.sourceLabel} / キャッシュ",
-            lineup=ai_result.lineup,
+            lineup=lineup,
             warnings=["過去の候補キャッシュから表示しています。", *ai_result.warnings],
             confidence=selected.confidence,
             sourceUrls=[selected.sourceUrl] if selected.sourceUrl else [],
             selectedCandidateId=selected.id,
             candidates=cached_candidates,
-            isRandom=infer_is_random_goods(selected.boxName, len(ai_result.lineup)),
+            isRandom=infer_is_random_goods(selected.boxName, len(lineup)),
         )
 
     try:
@@ -1665,26 +1996,33 @@ async def lookup(
     cached_candidates = await store_lookup_candidates(normalized_jan, candidates)
     product = cached_candidates[0] if cached_candidates else candidates[0]
     ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
+    shared_lineup = await supabase_fetch_shared_lineup(normalized_jan, product.boxName)
+    lineup = merge_lineup_items(ai_result.lineup, shared_lineup)
 
     return LookupResponse(
         janCode=normalized_jan,
         boxName=product.boxName,
         imageUrl=product.imageUrl,
         sourceLabel=product.sourceLabel,
-        lineup=ai_result.lineup,
+        lineup=lineup,
         warnings=[*search_warnings, *ai_result.warnings],
         confidence=None,
         sourceUrls=[],
         selectedCandidateId=product.id if isinstance(product, LookupCandidate) else None,
         candidates=cached_candidates,
-        isRandom=infer_is_random_goods(product.boxName, len(ai_result.lineup)),
+        isRandom=infer_is_random_goods(product.boxName, len(lineup)),
     )
 
 
 @app.post("/lookup/{jan}/feedback", response_model=list[LookupCandidate])
 async def lookup_candidate_feedback(jan: str, request: CandidateFeedbackRequest) -> list[LookupCandidate]:
     normalized_jan = validate_jan(jan)
-    return await apply_candidate_feedback(normalized_jan, request.candidateId, request.action)
+    return await apply_candidate_feedback(normalized_jan, request.candidateId, request.action, device_id=request.deviceId)
+
+
+@app.post("/lineup/feedback", response_model=list[LineupItem])
+async def lineup_feedback(request: LineupFeedbackRequest) -> list[LineupItem]:
+    return await apply_lineup_feedback(request)
 
 
 @app.get("/search", response_model=list[ProductCandidate])

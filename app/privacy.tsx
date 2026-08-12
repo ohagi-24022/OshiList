@@ -20,7 +20,15 @@ const policySections = [
   },
   {
     title: '外部サービスへの送信',
-    body: '商品情報の取得やAI解析を行う場合、バックエンドを通じて楽天市場API、Yahoo!ショッピングAPI、Gemini APIなどの外部サービスへ、JANコード、商品名、領収書画像、商品写真などを送信することがあります。',
+    body: '商品情報の取得やAI解析を行う場合、バックエンドを通じて楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIなどの外部サービスへ、JANコード、商品名、領収書画像、商品写真などを送信することがあります。',
+  },
+  {
+    title: '共有学習データ',
+    body: '商品候補やランダムグッズのラインナップ精度を高めるため、JANコード、商品名、キャラクター名、バリエーション名、候補の選択・却下・通報の情報をサーバーへ保存することがあります。これらは他のユーザーにも候補として反映される場合があります。',
+  },
+  {
+    title: '匿名端末ID',
+    body: '共有学習の重複投票や荒らし対策のため、アプリ内でランダムな端末IDを作成し、サーバー側でハッシュ化して保存します。氏名、メールアドレス、Yahoo! IDなどのログイン情報とは紐付けません。',
   },
   {
     title: 'カメラと写真ライブラリ',
@@ -56,7 +64,7 @@ export default function PrivacyScreen() {
           </Pressable>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: colors.text }]}>プライバシーポリシー</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>最終更新日: 2026年8月6日</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>最終更新日: 2026年8月12日</Text>
           </View>
         </View>
 
@@ -67,7 +75,7 @@ export default function PrivacyScreen() {
           <View style={styles.summaryText}>
             <Text style={[styles.summaryTitle, { color: colors.text }]}>コレクション情報は主に端末内で管理します</Text>
             <Text style={[styles.summaryBody, { color: colors.muted }]}>
-              商品検索やAI解析を使う時だけ、必要な情報をバックエンドや外部APIへ送信します。
+              商品検索、AI解析、共有学習を使う時だけ、必要な情報をバックエンドや外部APIへ送信します。
             </Text>
           </View>
         </View>

@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ManualGoodsForm } from '../../src/components/ManualGoodsForm';
 import { useTabReset } from '../../src/hooks/useTabReset';
 import { persistPickedImage, requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
-import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage, sendLookupCandidateFeedback } from '../../src/lib/productLookup';
+import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage, sendLineupFeedback, sendLookupCandidateFeedback } from '../../src/lib/productLookup';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useEvents } from '../../src/store/EventContext';
@@ -604,6 +604,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
   const [seriesName, setSeriesName] = useState('');
   const [candidates, setCandidates] = useState(result?.candidates ?? []);
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(result?.selectedCandidateId ?? result?.candidates?.[0]?.id ?? null);
+  const [hiddenLineupIds, setHiddenLineupIds] = useState<Set<string>>(new Set());
   const seriesSuggestions = useMemo(
     () => Array.from(new Set(goods.map((item) => item.seriesName).filter(Boolean))).slice(0, 10),
     [goods],
@@ -623,7 +624,9 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
     () => (previewResult ? findUserLineupForProduct(previewResult, seriesName, goods) : []),
     [goods, previewResult?.boxName, previewResult?.janCode, seriesName],
   );
-  const displayLineup = result?.lineup.length ? result.lineup : userLineup;
+  const displayLineup = (result?.lineup.length ? result.lineup : userLineup).filter(
+    (item) => !item.suggestionId || !hiddenLineupIds.has(item.suggestionId),
+  );
   const previewWithLineup = previewResult ? { ...previewResult, lineup: displayLineup } : null;
   const inferredIsRandom = previewResult ? Boolean(previewResult.isRandom) || inferIsRandomGoods(previewResult.boxName, displayLineup.length) : false;
 
@@ -631,6 +634,7 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
     setSeriesName('');
     setCandidates(result?.candidates ?? []);
     setActiveCandidateId(result?.selectedCandidateId ?? result?.candidates?.[0]?.id ?? null);
+    setHiddenLineupIds(new Set());
   }, [result?.janCode, result?.boxName]);
 
   const sendFeedback = async (action: 'selected' | 'rejected', candidateId = activeCandidateId) => {
@@ -645,6 +649,28 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
       }
     } catch {
       // Ranking feedback should never block registration.
+    }
+  };
+
+  const sendLineupLearning = async (
+    candidate: ProductLookupResult['lineup'][number],
+    action: 'selected' | 'rejected' | 'reported',
+  ) => {
+    if (!previewResult) return;
+    try {
+      await sendLineupFeedback({
+        janCode: result?.janCode,
+        boxName: previewResult.boxName,
+        characterName: candidate.characterName,
+        variantName: candidate.variantName,
+        suggestionId: candidate.suggestionId,
+        action,
+      });
+      if (candidate.suggestionId && action !== 'selected') {
+        setHiddenLineupIds((current) => new Set(current).add(candidate.suggestionId ?? ''));
+      }
+    } catch {
+      // Shared lineup feedback should never block local registration.
     }
   };
 
@@ -738,9 +764,10 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                 {displayLineup.length > 0 ? (
                   displayLineup.map((candidate) => (
                     <Pressable
-                      key={`${candidate.characterName}-${candidate.variantName}`}
+                      key={`${candidate.suggestionId ?? 'lineup'}-${candidate.characterName}-${candidate.variantName}`}
                       onPress={async () => {
                         await sendFeedback('selected');
+                        await sendLineupLearning(candidate, 'selected');
                         await addGoods({
                           janCode: result.janCode,
                           boxName: previewResult?.boxName ?? result.boxName,
@@ -756,9 +783,37 @@ function ProductResultModal({ result, onClose }: { result: ProductLookupResult |
                     >
                       <View>
                         <Text style={[styles.candidateName, { color: colors.text }]}>{candidate.characterName}</Text>
-                        <Text style={[styles.candidateVariant, { color: colors.muted }]}>{candidate.variantName}</Text>
+                        <Text style={[styles.candidateVariant, { color: colors.muted }]}>
+                          {candidate.variantName}
+                          {candidate.source === 'user' ? ` / 共有候補 ${candidate.selectedCount ?? 0}` : ''}
+                        </Text>
                       </View>
-                      <Ionicons color={colors.primary} name="add-circle-outline" size={24} />
+                      {candidate.suggestionId ? (
+                        <View style={styles.lineupFeedbackActions}>
+                          <Pressable
+                            accessibilityLabel="このラインナップ候補は違う"
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              sendLineupLearning(candidate, 'rejected');
+                            }}
+                            style={[styles.lineupFeedbackButton, { borderColor: colors.border }]}
+                          >
+                            <Ionicons color={colors.muted} name="thumbs-down-outline" size={16} />
+                          </Pressable>
+                          <Pressable
+                            accessibilityLabel="このラインナップ候補を通報"
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              sendLineupLearning(candidate, 'reported');
+                            }}
+                            style={[styles.lineupFeedbackButton, { borderColor: colors.border }]}
+                          >
+                            <Ionicons color={colors.muted} name="flag-outline" size={16} />
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Ionicons color={colors.primary} name="add-circle-outline" size={24} />
+                      )}
                     </Pressable>
                   ))
                 ) : (
@@ -807,7 +862,7 @@ function tokenSimilarity(left: string, right: string) {
   return overlap / Math.max(leftTokens.size, rightTokens.size);
 }
 
-function findUserLineupForProduct(result: ProductLookupResult, seriesName: string, goods: Goods[]) {
+function findUserLineupForProduct(result: ProductLookupResult, seriesName: string, goods: Goods[]): ProductLookupResult['lineup'] {
   const selectedSeries = seriesName.trim();
   const normalizedBoxName = normalizeGoodsName(result.boxName);
   const lineupMap = new Map<string, { characterName: string; variantName: string }>();
@@ -1418,6 +1473,8 @@ const styles = StyleSheet.create({
   },
   candidateName: { fontSize: 15, fontWeight: '900' },
   candidateVariant: { fontSize: 12, marginTop: 4 },
+  lineupFeedbackActions: { flexDirection: 'row', gap: 8 },
+  lineupFeedbackButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, height: 36, justifyContent: 'center', width: 36 },
   receiptItem: { borderRadius: 8, borderWidth: 1, marginBottom: 12, padding: 12 },
   receiptQuery: { fontSize: 16, fontWeight: '900' },
   receiptRaw: { fontSize: 11, lineHeight: 16, marginTop: 4 },

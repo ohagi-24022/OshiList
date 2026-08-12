@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { PhotoInferResult, ProductLookupCandidate, ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
 
 type LookupApiResponse = Partial<{
@@ -17,8 +19,24 @@ type LookupApiResponse = Partial<{
   candidates: ProductLookupCandidateApiResponse[];
   isRandom: boolean;
   is_random: boolean;
-  lineup: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
-  variants: Array<Partial<{ characterName: string; character_name: string; variantName: string; variant_name: string }>>;
+  lineup: LineupApiResponse[];
+  variants: LineupApiResponse[];
+}>;
+
+type LineupApiResponse = Partial<{
+  characterName: string;
+  character_name: string;
+  variantName: string;
+  variant_name: string;
+  suggestionId: string | null;
+  suggestion_id: string | null;
+  source: string | null;
+  selectedCount: number;
+  selected_count: number;
+  rejectedCount: number;
+  rejected_count: number;
+  reportCount: number;
+  report_count: number;
 }>;
 
 type ProductLookupCandidateApiResponse = Partial<{
@@ -83,6 +101,16 @@ const LOOKUP_API_URL = process.env.EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL;
 const DEFAULT_TIMEOUT_MS = 30000;
 const LOOKUP_TIMEOUT_MS = 90000;
 const RECEIPT_TIMEOUT_MS = 60000;
+const LEARNING_DEVICE_ID_KEY = 'oshilist.learning.deviceId.v1';
+
+async function getLearningDeviceId() {
+  const existing = await AsyncStorage.getItem(LEARNING_DEVICE_ID_KEY);
+  if (existing) return existing;
+
+  const next = `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  await AsyncStorage.setItem(LEARNING_DEVICE_ID_KEY, next);
+  return next;
+}
 
 function readErrorMessage(payload: unknown) {
   if (payload && typeof payload === 'object' && 'detail' in payload) {
@@ -174,6 +202,11 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
       .map((variant) => ({
         characterName: variant.characterName ?? variant.character_name ?? '',
         variantName: variant.variantName ?? variant.variant_name ?? '通常版',
+        suggestionId: variant.suggestionId ?? variant.suggestion_id ?? null,
+        source: variant.source ?? null,
+        selectedCount: Number(variant.selectedCount ?? variant.selected_count ?? 0),
+        rejectedCount: Number(variant.rejectedCount ?? variant.rejected_count ?? 0),
+        reportCount: Number(variant.reportCount ?? variant.report_count ?? 0),
       }))
       .filter((variant) => variant.characterName.trim().length > 0),
   };
@@ -193,13 +226,55 @@ export async function sendLookupCandidateFeedback(
   const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup/${encodeURIComponent(normalizedJan)}/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ candidateId: normalizedCandidateId, action }),
+    body: JSON.stringify({ candidateId: normalizedCandidateId, action, deviceId: await getLearningDeviceId() }),
   });
   const payload = (await response.json().catch(() => null)) as ProductLookupCandidateApiResponse[] | { detail?: string } | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));
   }
   return (Array.isArray(payload) ? payload : []).map(mapLookupCandidate).filter((candidate): candidate is ProductLookupCandidate => Boolean(candidate));
+}
+
+export async function sendLineupFeedback(input: {
+  janCode?: string | null;
+  boxName: string;
+  characterName: string;
+  variantName?: string;
+  suggestionId?: string | null;
+  action: 'selected' | 'rejected' | 'reported';
+}): Promise<ProductLookupResult['lineup']> {
+  if (!input.boxName.trim() || !input.characterName.trim()) {
+    return [];
+  }
+
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/lineup/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      janCode: input.janCode ?? null,
+      boxName: input.boxName,
+      characterName: input.characterName,
+      variantName: input.variantName?.trim() || '通常版',
+      suggestionId: input.suggestionId ?? null,
+      action: input.action,
+      deviceId: await getLearningDeviceId(),
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as LineupApiResponse[] | { detail?: string } | null;
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+  return (Array.isArray(payload) ? payload : [])
+    .map((variant) => ({
+      characterName: variant.characterName ?? variant.character_name ?? '',
+      variantName: variant.variantName ?? variant.variant_name ?? '通常版',
+      suggestionId: variant.suggestionId ?? variant.suggestion_id ?? null,
+      source: variant.source ?? null,
+      selectedCount: Number(variant.selectedCount ?? variant.selected_count ?? 0),
+      rejectedCount: Number(variant.rejectedCount ?? variant.rejected_count ?? 0),
+      reportCount: Number(variant.reportCount ?? variant.report_count ?? 0),
+    }))
+    .filter((variant) => variant.characterName.trim().length > 0);
 }
 
 export async function parseReceiptImage(imageBase64: string, mimeType = 'image/jpeg'): Promise<ReceiptParseResult> {
