@@ -266,50 +266,53 @@ export default function ScanScreen() {
             </Pressable>
           </View>
 
-          <View style={[styles.segment, { backgroundColor: colors.input }]}>
-            {visibleModes.map((value) => (
-              <Pressable
-                key={value}
-                onPress={() => setMode(value)}
-                style={[styles.segmentButton, mode === value && { backgroundColor: colors.surface }]}
-              >
-                <Ionicons
-                  color={mode === value ? colors.primary : colors.muted}
-                  name={
-                    value === 'barcode'
-                      ? 'barcode-outline'
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.segment, { backgroundColor: colors.input }]}>
+            {visibleModes.map((value) => {
+              const active = mode === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setMode(value)}
+                  style={[styles.segmentButton, active && { backgroundColor: colors.surface }]}
+                >
+                  <Ionicons
+                    color={active ? colors.primary : colors.muted}
+                    name={
+                      value === 'barcode'
+                        ? 'barcode-outline'
+                        : value === 'receipt'
+                          ? 'receipt-outline'
+                          : value === 'photo'
+                            ? 'camera-outline'
+                            : value === 'manual'
+                              ? 'create-outline'
+                              : value === 'plan'
+                                  ? 'calendar-outline'
+                        : value === 'check'
+                          ? 'shield-checkmark-outline'
+                          : 'sparkles-outline'
+                    }
+                    size={18}
+                  />
+                  <Text style={[styles.segmentText, { color: active ? colors.text : colors.muted }]}>
+                    {value === 'barcode'
+                      ? 'バーコード'
                       : value === 'receipt'
-                        ? 'receipt-outline'
+                        ? '領収書'
                         : value === 'photo'
-                          ? 'camera-outline'
+                          ? '写真登録α'
                           : value === 'manual'
-                            ? 'create-outline'
+                            ? '手動登録'
                             : value === 'plan'
-                                ? 'calendar-outline'
-                      : value === 'check'
-                        ? 'shield-checkmark-outline'
-                        : 'sparkles-outline'
-                  }
-                  size={18}
-                />
-                <Text style={[styles.segmentText, { color: mode === value ? colors.text : colors.muted }]}>
-                  {value === 'barcode'
-                    ? 'バーコード'
-                    : value === 'receipt'
-                      ? '領収書'
-                      : value === 'photo'
-                        ? '写真登録α'
-                        : value === 'manual'
-                          ? '手動登録'
-                          : value === 'plan'
-                              ? '予定登録'
-                              : value === 'check'
-                                ? '買う前'
-                                : 'イベント'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+                                ? '予定登録'
+                                : value === 'check'
+                                  ? '買う前'
+                                  : 'イベント'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
           {mode === 'barcode' ? (
             <>
@@ -318,13 +321,6 @@ export default function ScanScreen() {
                 stores={stores}
                 onSelect={selectStore}
               />
-
-              <View style={[styles.notice, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
-                <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
-                <Text style={[styles.noticeText, { color: colors.muted }]}>
-                  カメラはバーコード読取のみに使用します。写真や映像は保存しません。
-                </Text>
-              </View>
 
               <View style={[styles.cameraCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 {cameraReady ? (
@@ -627,44 +623,40 @@ function StoreSelector({
             {selectedStore ? selectedStore.name : '指定なし'}
           </Text>
         </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storeChips} style={styles.storeChipScroll}>
+          <Pressable
+            onPress={() => onSelect(null)}
+            style={[
+              styles.storeChip,
+              { backgroundColor: selectedStoreId ? colors.elevated : colors.text, borderColor: selectedStoreId ? colors.border : colors.text },
+            ]}
+          >
+            <Ionicons color={selectedStoreId ? colors.muted : colors.background} name="earth-outline" size={15} />
+            <Text style={[styles.storeChipText, { color: selectedStoreId ? colors.text : colors.background }]}>指定なし</Text>
+          </Pressable>
+          {stores.map((store) => {
+            const active = store.id === selectedStoreId;
+            return (
+              <Pressable
+                key={store.id}
+                onPress={() => onSelect(store.id)}
+                style={[
+                  styles.storeChip,
+                  { backgroundColor: active ? colors.text : colors.elevated, borderColor: active ? colors.text : colors.border },
+                ]}
+              >
+                <Ionicons color={active ? colors.background : colors.primary} name={store.priority ? 'star' : 'storefront-outline'} size={15} />
+                <Text numberOfLines={1} style={[styles.storeChipText, { color: active ? colors.background : colors.text }]}>
+                  {store.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
         <Pressable onPress={() => router.push('/my-stores')} style={[styles.storeManageButton, { backgroundColor: colors.elevated }]}>
           <Ionicons color={colors.primary} name="settings-outline" size={17} />
-          <Text style={[styles.storeManageText, { color: colors.text }]}>編集</Text>
         </Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storeChips}>
-        <Pressable
-          onPress={() => onSelect(null)}
-          style={[
-            styles.storeChip,
-            { backgroundColor: selectedStoreId ? colors.elevated : colors.text, borderColor: selectedStoreId ? colors.border : colors.text },
-          ]}
-        >
-          <Ionicons color={selectedStoreId ? colors.muted : colors.background} name="earth-outline" size={16} />
-          <Text style={[styles.storeChipText, { color: selectedStoreId ? colors.text : colors.background }]}>指定なし</Text>
-        </Pressable>
-        {stores.map((store) => {
-          const active = store.id === selectedStoreId;
-          return (
-            <Pressable
-              key={store.id}
-              onPress={() => onSelect(store.id)}
-              style={[
-                styles.storeChip,
-                { backgroundColor: active ? colors.text : colors.elevated, borderColor: active ? colors.text : colors.border },
-              ]}
-            >
-              <Ionicons color={active ? colors.background : colors.primary} name={store.priority ? 'star' : 'storefront-outline'} size={16} />
-              <Text numberOfLines={1} style={[styles.storeChipText, { color: active ? colors.background : colors.text }]}>
-                {store.name}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      <Text style={[styles.storeSelectorHelp, { color: colors.muted }]}>
-        選択中のストアがある場合、商品APIで見つからないJANはそのストア内を優先して探します。
-      </Text>
     </View>
   );
 }
@@ -1277,10 +1269,10 @@ function ProductPreview({ result }: { result: ProductLookupResult }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
-  content: { gap: 16, padding: 18, paddingBottom: 120 },
-  titleBlock: { gap: 3 },
-  title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
-  subtitle: { fontSize: 13, lineHeight: 19 },
+  content: { gap: 10, padding: 14, paddingBottom: 120 },
+  titleBlock: { gap: 2 },
+  title: { fontSize: 24, fontWeight: '900', letterSpacing: 0 },
+  subtitle: { fontSize: 12, lineHeight: 17 },
   flowSegment: { borderRadius: 8, flexDirection: 'row', gap: 4, padding: 4 },
   flowButton: {
     alignItems: 'center',
@@ -1288,22 +1280,21 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: 8,
-    height: 46,
+    height: 40,
     justifyContent: 'center',
   },
-  flowText: { fontSize: 14, fontWeight: '900' },
-  segment: { borderRadius: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4 },
+  flowText: { fontSize: 13, fontWeight: '900' },
+  segment: { borderRadius: 8, flexDirection: 'row', gap: 4, padding: 4 },
   segmentButton: {
     alignItems: 'center',
     borderRadius: 7,
-    flexBasis: '48%',
-    flexGrow: 1,
     flexDirection: 'row',
     gap: 7,
-    height: 42,
+    height: 38,
     justifyContent: 'center',
+    paddingHorizontal: 12,
   },
-  segmentText: { fontSize: 13, fontWeight: '900' },
+  segmentText: { fontSize: 12, fontWeight: '900' },
   notice: {
     alignItems: 'flex-start',
     borderRadius: 8,
@@ -1313,18 +1304,19 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   noticeText: { flex: 1, fontSize: 12, lineHeight: 18 },
-  storeSelector: { borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
+  storeSelector: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
   storeSelectorHeader: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
-  storeSelectorTitleBlock: { flex: 1, minWidth: 0 },
-  storeSelectorLabel: { fontSize: 11, fontWeight: '800' },
-  storeSelectorTitle: { fontSize: 16, fontWeight: '900', marginTop: 2 },
-  storeManageButton: { alignItems: 'center', borderRadius: 999, flexDirection: 'row', gap: 5, height: 34, paddingHorizontal: 11 },
+  storeSelectorTitleBlock: { flexShrink: 0, width: 84 },
+  storeSelectorLabel: { fontSize: 10, fontWeight: '800' },
+  storeSelectorTitle: { fontSize: 13, fontWeight: '900', marginTop: 2 },
+  storeManageButton: { alignItems: 'center', borderRadius: 999, flexDirection: 'row', gap: 5, height: 32, justifyContent: 'center', width: 32 },
   storeManageText: { fontSize: 12, fontWeight: '900' },
+  storeChipScroll: { flex: 1 },
   storeChips: { gap: 8, paddingRight: 6 },
-  storeChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, flexDirection: 'row', gap: 6, height: 36, maxWidth: 160, paddingHorizontal: 12 },
+  storeChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, flexDirection: 'row', gap: 5, height: 32, maxWidth: 132, paddingHorizontal: 10 },
   storeChipText: { flexShrink: 1, fontSize: 12, fontWeight: '900' },
   storeSelectorHelp: { fontSize: 11, fontWeight: '700', lineHeight: 16 },
-  cameraCard: { borderRadius: 8, borderWidth: 1, height: 282, overflow: 'hidden' },
+  cameraCard: { borderRadius: 8, borderWidth: 1, height: 272, overflow: 'hidden' },
   camera: { flex: 1 },
   guide: {
     alignSelf: 'center',
