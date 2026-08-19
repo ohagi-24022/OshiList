@@ -8,7 +8,7 @@ import { useAppTheme } from '../src/store/ThemeContext';
 const policySections = [
   {
     title: '取得する情報',
-    body: 'OshiListでは、ユーザーが登録したグッズ名、シリーズ名、キャラクター名、所持数、ステータス、画像、テーマ設定、推しプロフィールを扱います。バーコード登録ではJANコード、領収書や写真登録αでは選択または撮影した画像を扱います。',
+    body: 'OshiListでは、ユーザーが登録したグッズ名、シリーズ名、キャラクター名、所持数、ステータス、画像、テーマ設定、推しプロフィール、マイストア情報を扱います。バーコード登録ではJANコード、領収書や写真登録αでは選択または撮影した画像を扱います。',
   },
   {
     title: '利用目的',
@@ -20,7 +20,7 @@ const policySections = [
   },
   {
     title: '外部サービスへの送信',
-    body: '商品情報の取得やAI解析を行う場合、バックエンドを通じて楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIなどの外部サービスへ、JANコード、商品名、領収書画像、商品写真などを送信することがあります。',
+    body: '商品情報の取得やAI解析を行う場合、バックエンドを通じて楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIなどの外部サービスへ、JANコード、商品名、領収書画像、商品写真、検索に使用するストアドメインなどを送信することがあります。',
   },
   {
     title: '共有学習データ',
@@ -64,7 +64,7 @@ export default function PrivacyScreen() {
           </Pressable>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: colors.text }]}>プライバシーポリシー</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>最終更新日: 2026年8月12日</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>最終更新日: 2026年8月20日</Text>
           </View>
         </View>
 

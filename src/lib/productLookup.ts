@@ -164,7 +164,7 @@ function mapLookupCandidate(candidate: ProductLookupCandidateApiResponse): Produ
   };
 }
 
-export async function lookupProductByJan(janCode: string): Promise<ProductLookupResult> {
+export async function lookupProductByJan(janCode: string, options: { preferredStoreDomain?: string | null } = {}): Promise<ProductLookupResult> {
   const normalizedJan = janCode.trim();
   if (!/^\d{8,14}$/.test(normalizedJan)) {
     throw new Error('JANコードは8から14桁の数字で入力してください。');
@@ -174,7 +174,13 @@ export async function lookupProductByJan(janCode: string): Promise<ProductLookup
     throw new Error('オフラインのため商品情報を取得できません。手動登録に切り替えてください。');
   }
 
-  const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup?jan=${encodeURIComponent(normalizedJan)}`, {}, LOOKUP_TIMEOUT_MS);
+  const params = new URLSearchParams({ jan: normalizedJan });
+  const preferredStoreDomain = options.preferredStoreDomain?.trim();
+  if (preferredStoreDomain) {
+    params.set('preferredStoreDomain', preferredStoreDomain);
+  }
+
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/lookup?${params.toString()}`, {}, LOOKUP_TIMEOUT_MS);
   const payload = (await response.json().catch(() => null)) as LookupApiResponse | null;
   if (!response.ok) {
     throw new Error(readErrorMessage(payload));

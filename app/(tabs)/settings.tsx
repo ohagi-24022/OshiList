@@ -138,6 +138,20 @@ export default function SettingsScreen() {
           <Ionicons color={colors.muted} name="chevron-forward" size={18} />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/my-stores')}
+          style={[styles.helpButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.helpIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="storefront-outline" size={23} />
+          </View>
+          <View style={styles.helpText}>
+            <Text style={[styles.helpTitle, { color: colors.text }]}>マイストア</Text>
+            <Text style={[styles.helpBody, { color: colors.muted }]}>公式通販などを登録し、登録時のJAN検索をストア単位で絞れます。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+        </Pressable>
+
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>交換管理</Text>
           <Pressable

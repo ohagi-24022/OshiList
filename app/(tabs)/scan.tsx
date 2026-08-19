@@ -3,7 +3,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,6 +29,7 @@ import { goodsStatusLabels } from '../../src/lib/goodsStatus';
 import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useEvents } from '../../src/store/EventContext';
 import { useGoods } from '../../src/store/GoodsContext';
+import { MyStore, useMyStores } from '../../src/store/MyStoreContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, PhotoInferResult, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
@@ -47,6 +48,7 @@ export default function ScanScreen() {
   const { colors } = useAppTheme();
   const { addGoods, goods } = useGoods();
   const { events, selectedEventId, setSelectedEventId } = useEvents();
+  const { selectedStore, selectedStoreId, selectStore, stores } = useMyStores();
   const params = useLocalSearchParams<{ mode?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const isFocused = useIsFocused();
@@ -110,7 +112,7 @@ export default function ScanScreen() {
     setLoading(true);
     setStatusMessage(`JAN ${normalizedJan} を読み取りました。商品情報を検索中です。`);
     try {
-      const product = await lookupProductByJan(normalizedJan);
+      const product = await lookupProductByJan(normalizedJan, { preferredStoreDomain: selectedStore?.domain });
       setManualJan(product.janCode ?? normalizedJan);
       setStatusMessage('商品情報を取得しました。登録内容を確認してください。');
       setResult(product);
@@ -311,6 +313,12 @@ export default function ScanScreen() {
 
           {mode === 'barcode' ? (
             <>
+              <StoreSelector
+                selectedStoreId={selectedStoreId}
+                stores={stores}
+                onSelect={selectStore}
+              />
+
               <View style={[styles.notice, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
                 <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
                 <Text style={[styles.noticeText, { color: colors.muted }]}>
@@ -595,6 +603,69 @@ export default function ScanScreen() {
         />
       </SafeAreaView>
     </KeyboardAvoidingView>
+  );
+}
+
+function StoreSelector({
+  onSelect,
+  selectedStoreId,
+  stores,
+}: {
+  onSelect: (id: string | null) => Promise<void>;
+  selectedStoreId: string | null;
+  stores: MyStore[];
+}) {
+  const { colors } = useAppTheme();
+  const selectedStore = stores.find((store) => store.id === selectedStoreId) ?? null;
+
+  return (
+    <View style={[styles.storeSelector, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.storeSelectorHeader}>
+        <View style={styles.storeSelectorTitleBlock}>
+          <Text style={[styles.storeSelectorLabel, { color: colors.muted }]}>使用ストア</Text>
+          <Text numberOfLines={1} style={[styles.storeSelectorTitle, { color: colors.text }]}>
+            {selectedStore ? selectedStore.name : '指定なし'}
+          </Text>
+        </View>
+        <Pressable onPress={() => router.push('/my-stores')} style={[styles.storeManageButton, { backgroundColor: colors.elevated }]}>
+          <Ionicons color={colors.primary} name="settings-outline" size={17} />
+          <Text style={[styles.storeManageText, { color: colors.text }]}>編集</Text>
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storeChips}>
+        <Pressable
+          onPress={() => onSelect(null)}
+          style={[
+            styles.storeChip,
+            { backgroundColor: selectedStoreId ? colors.elevated : colors.text, borderColor: selectedStoreId ? colors.border : colors.text },
+          ]}
+        >
+          <Ionicons color={selectedStoreId ? colors.muted : colors.background} name="earth-outline" size={16} />
+          <Text style={[styles.storeChipText, { color: selectedStoreId ? colors.text : colors.background }]}>指定なし</Text>
+        </Pressable>
+        {stores.map((store) => {
+          const active = store.id === selectedStoreId;
+          return (
+            <Pressable
+              key={store.id}
+              onPress={() => onSelect(store.id)}
+              style={[
+                styles.storeChip,
+                { backgroundColor: active ? colors.text : colors.elevated, borderColor: active ? colors.text : colors.border },
+              ]}
+            >
+              <Ionicons color={active ? colors.background : colors.primary} name={store.priority ? 'star' : 'storefront-outline'} size={16} />
+              <Text numberOfLines={1} style={[styles.storeChipText, { color: active ? colors.background : colors.text }]}>
+                {store.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <Text style={[styles.storeSelectorHelp, { color: colors.muted }]}>
+        選択中のストアがある場合、商品APIで見つからないJANはそのストア内を優先して探します。
+      </Text>
+    </View>
   );
 }
 
@@ -1242,6 +1313,17 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   noticeText: { flex: 1, fontSize: 12, lineHeight: 18 },
+  storeSelector: { borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
+  storeSelectorHeader: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
+  storeSelectorTitleBlock: { flex: 1, minWidth: 0 },
+  storeSelectorLabel: { fontSize: 11, fontWeight: '800' },
+  storeSelectorTitle: { fontSize: 16, fontWeight: '900', marginTop: 2 },
+  storeManageButton: { alignItems: 'center', borderRadius: 999, flexDirection: 'row', gap: 5, height: 34, paddingHorizontal: 11 },
+  storeManageText: { fontSize: 12, fontWeight: '900' },
+  storeChips: { gap: 8, paddingRight: 6 },
+  storeChip: { alignItems: 'center', borderRadius: 999, borderWidth: 1, flexDirection: 'row', gap: 6, height: 36, maxWidth: 160, paddingHorizontal: 12 },
+  storeChipText: { flexShrink: 1, fontSize: 12, fontWeight: '900' },
+  storeSelectorHelp: { fontSize: 11, fontWeight: '700', lineHeight: 16 },
   cameraCard: { borderRadius: 8, borderWidth: 1, height: 282, overflow: 'hidden' },
   camera: { flex: 1 },
   guide: {

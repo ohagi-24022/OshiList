@@ -14,6 +14,8 @@ python -m pip install -r requirements.txt
 
 When Yahoo/Rakuten product APIs do not return a usable JAN result, `/lookup` uses Brave Search by default, then asks Gemini to format those search results with normal text generation. It does not use Gemini `google_search` grounding, so it avoids the separate Search Grounding quota.
 
+The Expo app can send a user-selected My Store domain with `preferredStoreDomain`. When this value is present, Brave Search tries `site:<domain> <JAN>` queries first, and cached candidates from the same domain are ranked higher. This reduces broad web-search requests and helps official-store results win over resale listings.
+
 Required environment variables:
 
 ```text
@@ -21,11 +23,11 @@ BRAVE_SEARCH_API_KEY=your_brave_search_api_key
 WEB_SEARCH_PROVIDER=brave
 ```
 
-Optional Google Custom Search fallback:
+Optional legacy Google Custom Search fallback. Leave these blank when Custom Search API cannot be enabled:
 
 ```text
-GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
-GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+GOOGLE_SEARCH_API_KEY=
+GOOGLE_SEARCH_ENGINE_ID=
 ```
 
 If these values are missing, the fallback returns `503` and the app can continue to manual registration.
@@ -155,8 +157,8 @@ RAKUTEN_APP_ID=your_rakuten_application_id
 RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
-GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
-GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+GOOGLE_SEARCH_API_KEY=
+GOOGLE_SEARCH_ENGINE_ID=
 BRAVE_SEARCH_API_KEY=your_brave_search_api_key
 WEB_SEARCH_PROVIDER=brave
 SUPABASE_URL=https://your-project.supabase.co
@@ -214,8 +216,8 @@ RAKUTEN_APP_ID=your_rakuten_application_id
 RAKUTEN_ACCESS_KEY=your_rakuten_access_key
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
-GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key
-GOOGLE_SEARCH_ENGINE_ID=your_programmable_search_engine_id
+GOOGLE_SEARCH_API_KEY=
+GOOGLE_SEARCH_ENGINE_ID=
 BRAVE_SEARCH_API_KEY=your_brave_search_api_key
 WEB_SEARCH_PROVIDER=brave
 SUPABASE_URL=https://your-project.supabase.co
@@ -260,7 +262,7 @@ oshilist-api.onrender.com
 
 Yahoo!ショッピングAPI、楽天商品検索APIの順に商品名と画像URLを取得し、Gemini設定があればラインナップ候補も返します。
 
-When product APIs cannot identify a JAN code, `/lookup` now calls Brave Search by default and then asks Gemini to format those search results. Configure `BRAVE_SEARCH_API_KEY`, `WEB_SEARCH_PROVIDER=brave`, and `GEMINI_API_KEY` on Render to enable this fallback. Google Custom Search is only used when `WEB_SEARCH_PROVIDER=google` or `WEB_SEARCH_PROVIDER=auto`.
+When product APIs cannot identify a JAN code, `/lookup` now calls Brave Search by default and then asks Gemini to format those search results. Configure `BRAVE_SEARCH_API_KEY`, `WEB_SEARCH_PROVIDER=brave`, and `GEMINI_API_KEY` on Render to enable this fallback. Google Custom Search is only used when `WEB_SEARCH_PROVIDER=google` or `WEB_SEARCH_PROVIDER=auto`, so keep `WEB_SEARCH_PROVIDER=brave` if Custom Search API is unavailable.
 
 検索元を固定したい場合は `provider` を指定できます。
 
@@ -268,6 +270,12 @@ When product APIs cannot identify a JAN code, `/lookup` now calls Brave Search b
 GET /lookup?jan=4900000000000&provider=yahoo
 GET /lookup?jan=4900000000000&provider=rakuten
 GET /lookup?jan=4900000000000&provider=auto
+```
+
+登録時に選択したマイストアを優先したい場合は `preferredStoreDomain` を指定します。
+
+```text
+GET /lookup?jan=4900000000000&preferredStoreDomain=example-store.jp
 ```
 
 AI解析をスキップしたい場合は `analyze=false` を指定します。

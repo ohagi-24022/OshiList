@@ -6,6 +6,7 @@ import { AppSettingsProvider } from '../src/store/AppSettingsContext';
 import { EventProvider } from '../src/store/EventContext';
 import { ProfileProvider } from '../src/store/ProfileContext';
 import { RegistrationPresetProvider } from '../src/store/RegistrationPresetContext';
+import { MyStoreProvider } from '../src/store/MyStoreContext';
 import { ThemeProvider, useAppTheme } from '../src/store/ThemeContext';
 
 function RootStack() {
@@ -33,11 +34,13 @@ export default function Layout() {
       <ProfileProvider>
         <RegistrationPresetProvider>
           <AppSettingsProvider>
-            <EventProvider>
-              <GoodsProvider>
-                <RootStack />
-              </GoodsProvider>
-            </EventProvider>
+            <MyStoreProvider>
+              <EventProvider>
+                <GoodsProvider>
+                  <RootStack />
+                </GoodsProvider>
+              </EventProvider>
+            </MyStoreProvider>
           </AppSettingsProvider>
         </RegistrationPresetProvider>
       </ProfileProvider>

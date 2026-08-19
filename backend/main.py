@@ -234,19 +234,20 @@ async def privacy_page() -> str:
       <body>
         <main>
           <h1>プライバシーポリシー</h1>
-          <p>{app_name}は、推しグッズ管理を補助するためにJANコード、商品名、商品画像URL、登録内容を利用します。</p>
+          <p>{app_name}は、推しグッズ管理を補助するためにJANコード、商品名、商品画像URL、登録内容、マイストア情報を利用します。</p>
           <h2>取得する情報</h2>
           <ul>
             <li>ユーザーが入力またはスキャンしたJANコード</li>
             <li>商品検索APIから取得した商品名、商品画像URL</li>
             <li>ユーザーがアプリ内で登録したグッズ情報</li>
+            <li>ユーザーが登録または選択したストア名、URL、ドメイン</li>
             <li>商品候補やラインナップ候補の選択、却下、通報の情報</li>
             <li>共有学習の重複投票防止に使う匿名端末IDのハッシュ値</li>
           </ul>
           <h2>利用目的</h2>
           <p>商品登録の補助、コレクション管理、重複購入防止、商品候補やランダムグッズのラインナップ候補の精度改善、荒らし対策のために利用します。</p>
           <h2>外部API</h2>
-          <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIを利用する場合があります。</p>
+          <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIを利用する場合があります。マイストアが選択されている場合、検索精度向上のためストアドメインを検索条件として利用することがあります。</p>
           <h2>保存</h2>
           <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索、ラインナップ解析、共有学習候補の保存と集計に利用します。匿名端末IDはサーバー側でハッシュ化して保存し、氏名やメールアドレス等とは紐付けません。</p>
         </main>
@@ -380,6 +381,27 @@ def candidate_id_for(jan: str, box_name: str, source_label: str, source_url: str
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def normalize_domain(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return ""
+    normalized = re.sub(r"^https?://", "", normalized)
+    normalized = normalized.split("/")[0].split("?")[0].split("#")[0]
+    normalized = normalized.split(":")[0]
+    normalized = re.sub(r"^www\.", "", normalized)
+    return re.sub(r"[^a-z0-9.-]", "", normalized)
+
+
+def domain_from_url(value: str | None) -> str:
+    return normalize_domain(value)
+
+
+def url_matches_domain(url: str | None, domain: str | None) -> bool:
+    normalized_domain = normalize_domain(domain)
+    source_domain = domain_from_url(url)
+    return bool(normalized_domain and source_domain and (source_domain == normalized_domain or source_domain.endswith(f".{normalized_domain}")))
+
+
 def learning_device_hash(device_id: str | None) -> str | None:
     normalized = (device_id or "").strip()
     if len(normalized) < 8:
@@ -424,18 +446,19 @@ def save_lookup_cache(payload: dict[str, Any]) -> None:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
 
 
-def candidate_score(candidate: dict[str, Any]) -> float:
+def candidate_score(candidate: dict[str, Any], preferred_domain: str | None = None) -> float:
     selected = int(candidate.get("selectedCount") or 0)
     rejected = int(candidate.get("rejectedCount") or 0)
     base = float(candidate.get("confidence") or 0.0) * 3
     quality = product_quality_score(str(candidate.get("boxName") or ""), candidate.get("imageUrl"))
     bounded_selected = min(selected, 20)
     bounded_rejected = min(rejected, 20)
-    return bounded_selected * 8 - bounded_rejected * 5 + base + quality
+    domain_bonus = 25 if url_matches_domain(candidate.get("sourceUrl"), preferred_domain) else 0
+    return bounded_selected * 8 - bounded_rejected * 5 + base + quality + domain_bonus
 
 
-def sort_cached_candidates(raw_candidates: list[dict[str, Any]]) -> list[LookupCandidate]:
-    sorted_candidates = sorted(raw_candidates, key=candidate_score, reverse=True)
+def sort_cached_candidates(raw_candidates: list[dict[str, Any]], preferred_domain: str | None = None) -> list[LookupCandidate]:
+    sorted_candidates = sorted(raw_candidates, key=lambda candidate: candidate_score(candidate, preferred_domain), reverse=True)
     response_candidates: list[LookupCandidate] = []
     for candidate in sorted_candidates:
         try:
@@ -449,7 +472,7 @@ def sort_cached_candidates(raw_candidates: list[dict[str, Any]]) -> list[LookupC
                     confidence=float(candidate.get("confidence")) if candidate.get("confidence") is not None else None,
                     selectedCount=max(0, int(candidate.get("selectedCount") or 0)),
                     rejectedCount=max(0, int(candidate.get("rejectedCount") or 0)),
-                    score=candidate_score(candidate),
+                    score=candidate_score(candidate, preferred_domain),
                 ),
             )
         except (TypeError, ValueError):
@@ -457,7 +480,7 @@ def sort_cached_candidates(raw_candidates: list[dict[str, Any]]) -> list[LookupC
     return [candidate for candidate in response_candidates if candidate.id and candidate.boxName]
 
 
-def json_cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+def json_cached_candidates_for_jan(jan: str, preferred_domain: str | None = None) -> list[LookupCandidate]:
     payload = load_lookup_cache()
     jan_entry = (payload.get("jans") or {}).get(jan)
     if not isinstance(jan_entry, dict):
@@ -465,10 +488,16 @@ def json_cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
     raw_candidates = jan_entry.get("candidates")
     if not isinstance(raw_candidates, list):
         return []
-    return sort_cached_candidates(raw_candidates)
+    return sort_cached_candidates(raw_candidates, preferred_domain)
 
 
-def json_store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+def json_store_lookup_candidates(
+    jan: str,
+    candidates: list[ProductCandidate],
+    confidence: float | None = None,
+    source_urls: list[str] | None = None,
+    preferred_domain: str | None = None,
+) -> list[LookupCandidate]:
     payload = load_lookup_cache()
     jans = payload.setdefault("jans", {})
     jan_entry = jans.setdefault(jan, {"candidates": []})
@@ -514,7 +543,7 @@ def json_store_lookup_candidates(jan: str, candidates: list[ProductCandidate], c
 
     jan_entry["updatedAt"] = current_time
     save_lookup_cache(payload)
-    return sort_cached_candidates(raw_candidates)
+    return sort_cached_candidates(raw_candidates, preferred_domain)
 
 
 def json_apply_candidate_feedback(jan: str, candidate_id: str, action: str) -> list[LookupCandidate]:
@@ -672,12 +701,18 @@ async def supabase_fetch_candidate_rows(jan: str) -> list[dict[str, Any]]:
     return payload if isinstance(payload, list) else []
 
 
-async def supabase_cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+async def supabase_cached_candidates_for_jan(jan: str, preferred_domain: str | None = None) -> list[LookupCandidate]:
     rows = await supabase_fetch_candidate_rows(jan)
-    return sort_cached_candidates([supabase_row_to_candidate_dict(row) for row in rows if isinstance(row, dict)])
+    return sort_cached_candidates([supabase_row_to_candidate_dict(row) for row in rows if isinstance(row, dict)], preferred_domain)
 
 
-async def supabase_store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+async def supabase_store_lookup_candidates(
+    jan: str,
+    candidates: list[ProductCandidate],
+    confidence: float | None = None,
+    source_urls: list[str] | None = None,
+    preferred_domain: str | None = None,
+) -> list[LookupCandidate]:
     rows = await supabase_fetch_candidate_rows(jan)
     existing_candidates = [supabase_row_to_candidate_dict(row) for row in rows if isinstance(row, dict)]
     by_key = {supabase_candidate_key(candidate): candidate for candidate in existing_candidates}
@@ -719,7 +754,7 @@ async def supabase_store_lookup_candidates(jan: str, candidates: list[ProductCan
             if response.status_code >= 400:
                 raise HTTPException(status_code=502, detail=f"Supabase candidate cache save failed. status={response.status_code}: {response.text[:200]}")
 
-    return await supabase_cached_candidates_for_jan(jan)
+    return await supabase_cached_candidates_for_jan(jan, preferred_domain)
 
 
 async def supabase_apply_candidate_feedback(jan: str, candidate_id: str, action: str, device_id: str | None = None) -> list[LookupCandidate]:
@@ -805,16 +840,22 @@ async def supabase_apply_candidate_feedback(jan: str, candidate_id: str, action:
     return await supabase_cached_candidates_for_jan(jan)
 
 
-async def cached_candidates_for_jan(jan: str) -> list[LookupCandidate]:
+async def cached_candidates_for_jan(jan: str, preferred_domain: str | None = None) -> list[LookupCandidate]:
     if supabase_configured():
-        return await supabase_cached_candidates_for_jan(jan)
-    return json_cached_candidates_for_jan(jan)
+        return await supabase_cached_candidates_for_jan(jan, preferred_domain)
+    return json_cached_candidates_for_jan(jan, preferred_domain)
 
 
-async def store_lookup_candidates(jan: str, candidates: list[ProductCandidate], confidence: float | None = None, source_urls: list[str] | None = None) -> list[LookupCandidate]:
+async def store_lookup_candidates(
+    jan: str,
+    candidates: list[ProductCandidate],
+    confidence: float | None = None,
+    source_urls: list[str] | None = None,
+    preferred_domain: str | None = None,
+) -> list[LookupCandidate]:
     if supabase_configured():
-        return await supabase_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls)
-    return json_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls)
+        return await supabase_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls, preferred_domain=preferred_domain)
+    return json_store_lookup_candidates(jan, candidates, confidence=confidence, source_urls=source_urls, preferred_domain=preferred_domain)
 
 
 async def apply_candidate_feedback(jan: str, candidate_id: str, action: str, device_id: str | None = None) -> list[LookupCandidate]:
@@ -1360,7 +1401,7 @@ async def search_google_results_for_jan(jan: str) -> list[dict[str, str | None]]
     return results
 
 
-async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
+async def search_brave_results_for_jan(jan: str, preferred_domain: str | None = None) -> list[dict[str, str | None]]:
     if not BRAVE_SEARCH_API_KEY:
         raise HTTPException(status_code=503, detail="BRAVE_SEARCH_API_KEY is required for Brave Search fallback.")
 
@@ -1369,7 +1410,14 @@ async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
         "Accept-Encoding": "gzip",
         "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
     }
-    queries = [
+    normalized_domain = normalize_domain(preferred_domain)
+    scoped_queries = [
+        f'site:{normalized_domain} "{jan}"',
+        f"site:{normalized_domain} {jan}",
+        f"site:{normalized_domain} {jan} 商品",
+        f"site:{normalized_domain} {jan} JAN",
+    ] if normalized_domain else []
+    broad_queries = [
         f'"{jan}"',
         jan,
         f'"{jan}" 商品',
@@ -1377,6 +1425,7 @@ async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
         f'{jan} JAN',
         f'{jan} グッズ',
     ]
+    queries = [*scoped_queries, *broad_queries]
     results: list[dict[str, str | None]] = []
     seen_links: set[str] = set()
     errors: list[str] = []
@@ -1429,11 +1478,13 @@ async def search_brave_results_for_jan(jan: str) -> list[dict[str, str | None]]:
                     },
                 )
 
+            if normalized_domain and query in scoped_queries and len(results) >= 4:
+                break
             if len(results) >= 8:
                 break
 
     if not results:
-        detail = "Brave Search did not return product candidates after trying broad JAN queries."
+        detail = "Brave Search did not return product candidates after trying JAN queries."
         if errors:
             detail = f"{detail} {' / '.join(errors[:3])}"
         raise HTTPException(status_code=404, detail=detail)
@@ -1504,14 +1555,18 @@ async def search_brave_image_for_product(product_name: str) -> str | None:
     return None
 
 
-async def search_web_results_for_jan(jan: str) -> tuple[list[dict[str, str | None]], str]:
+async def search_web_results_for_jan(jan: str, preferred_domain: str | None = None) -> tuple[list[dict[str, str | None]], str]:
     errors: list[str] = []
 
     provider = WEB_SEARCH_PROVIDER if WEB_SEARCH_PROVIDER in {"brave", "google", "auto"} else "brave"
 
     if provider in {"brave", "auto"} and BRAVE_SEARCH_API_KEY:
         try:
-            return await search_brave_results_for_jan(jan), "Brave Search"
+            label = "Brave Search"
+            normalized_domain = normalize_domain(preferred_domain)
+            if normalized_domain:
+                label = f"Brave Search / {normalized_domain}"
+            return await search_brave_results_for_jan(jan, normalized_domain), label
         except HTTPException as exc:
             errors.append(f"Brave: {exc.detail}")
 
@@ -1786,11 +1841,11 @@ async def analyze_lineup_with_gemini(product_name: str) -> AnalyzeLineupResponse
     return AnalyzeLineupResponse(lineup=lineup, warnings=warnings)
 
 
-async def lookup_product_with_web_search(jan: str) -> LookupResponse:
+async def lookup_product_with_web_search(jan: str, preferred_domain: str | None = None) -> LookupResponse:
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured.")
 
-    search_results, search_provider_label = await search_web_results_for_jan(jan)
+    search_results, search_provider_label = await search_web_results_for_jan(jan, preferred_domain)
     search_context = json.dumps(search_results, ensure_ascii=False)
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     prompt = (
@@ -1907,6 +1962,7 @@ async def lookup_product_with_web_search(jan: str) -> LookupResponse:
         [ProductCandidate(boxName=box_name, imageUrl=image_url, sourceLabel=f"{search_provider_label} + Gemini")],
         confidence=confidence,
         source_urls=source_urls[:1],
+        preferred_domain=preferred_domain,
     )
 
     return LookupResponse(
@@ -1935,6 +1991,7 @@ async def health() -> dict[str, Any]:
         "webSearchProvider": WEB_SEARCH_PROVIDER if WEB_SEARCH_PROVIDER in {"brave", "google", "auto"} else "brave",
         "googleSearchConfigured": bool(GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID),
         "braveSearchConfigured": bool(BRAVE_SEARCH_API_KEY),
+        "myStoreSearchSupported": bool(BRAVE_SEARCH_API_KEY),
         "supabaseCandidateCacheConfigured": supabase_configured(),
         "candidateCacheTable": SUPABASE_LOOKUP_TABLE if supabase_configured() else str(LOOKUP_CACHE_PATH),
         "sharedLearningConfigured": supabase_configured(),
@@ -1951,11 +2008,14 @@ async def lookup(
     jan: str = Query(..., min_length=8, max_length=14),
     analyze: bool = Query(default=True),
     provider: str = Query(default="auto", pattern="^(auto|yahoo|rakuten)$"),
+    preferredStoreDomain: str | None = Query(default=None, max_length=120),
 ) -> LookupResponse:
     normalized_jan = validate_jan(jan)
+    preferred_domain = normalize_domain(preferredStoreDomain)
 
-    cached_candidates = await cached_candidates_for_jan(normalized_jan)
-    if cached_candidates:
+    cached_candidates = await cached_candidates_for_jan(normalized_jan, preferred_domain)
+    has_preferred_cached_candidate = any(url_matches_domain(candidate.sourceUrl, preferred_domain) for candidate in cached_candidates)
+    if cached_candidates and (not preferred_domain or has_preferred_cached_candidate):
         selected = cached_candidates[0]
         selected_image_url = selected.imageUrl or await search_brave_image_for_product(selected.boxName)
         ai_result = await analyze_lineup_with_gemini(selected.boxName) if analyze else AnalyzeLineupResponse()
@@ -1981,7 +2041,7 @@ async def lookup(
             raise HTTPException(status_code=404, detail="商品APIで候補が見つかりませんでした。")
     except HTTPException as search_error:
         try:
-            fallback_result = await lookup_product_with_web_search(normalized_jan)
+            fallback_result = await lookup_product_with_web_search(normalized_jan, preferred_domain)
         except HTTPException as fallback_error:
             fallback_detail = str(fallback_error.detail)
             if "手動登録に切り替えてください" in fallback_detail:
@@ -1993,7 +2053,7 @@ async def lookup(
         fallback_result.warnings = [f"Product APIs did not return a usable result: {search_error.detail}", *fallback_result.warnings]
         return fallback_result
 
-    cached_candidates = await store_lookup_candidates(normalized_jan, candidates)
+    cached_candidates = await store_lookup_candidates(normalized_jan, candidates, preferred_domain=preferred_domain)
     product = cached_candidates[0] if cached_candidates else candidates[0]
     ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
     shared_lineup = await supabase_fetch_shared_lineup(normalized_jan, product.boxName)
