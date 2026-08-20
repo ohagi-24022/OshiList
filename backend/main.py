@@ -95,6 +95,16 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+async def root() -> dict[str, str]:
+    return {
+        "ok": "true",
+        "service": "OshiList Product Lookup",
+        "health": "/health",
+        "privacy": "/privacy",
+    }
+
+
 class LineupItem(BaseModel):
     characterName: str = Field(..., min_length=1)
     variantName: str = Field(default="通常版", min_length=1)
