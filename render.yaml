@@ -1,12 +1,14 @@
 services:
   - type: web
-    name: oshilist-api
+    name: oshilist-api-v2
     runtime: python
     rootDir: backend
     plan: free
+    region: singapore
     buildCommand: pip install -r requirements.txt
     startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    autoDeployTrigger: commit
     envVars:
       - key: YAHOO_APP_ID
         sync: false
@@ -18,6 +20,44 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.6-flash
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: WEB_SEARCH_PROVIDER
+        value: brave
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_LOOKUP_TABLE
+        value: product_lookup_candidates
+      - key: SUPABASE_CANDIDATE_VOTE_TABLE
+        value: product_lookup_candidate_votes
+      - key: SUPABASE_LINEUP_TABLE
+        value: product_lineup_suggestions
+      - key: SUPABASE_LINEUP_VOTE_TABLE
+        value: product_lineup_votes
+      - key: SUPABASE_IMAGE_TABLE
+        value: product_image_candidates
+      - key: SUPABASE_IMAGE_VOTE_TABLE
+        value: product_image_votes
+      - key: SUPABASE_IMAGE_BUCKET
+        value: product-images
+      - key: LEARNING_DEVICE_SALT
+        sync: false
+      - key: LINEUP_ACCEPT_SELECTED_MIN
+        value: "2"
+      - key: LINEUP_REPORT_HIDE_MIN
+        value: "3"
+      - key: IMAGE_ACCEPT_SIGNAL_MIN
+        value: "2"
+      - key: IMAGE_REPORT_HIDE_MIN
+        value: "3"
+      - key: IMAGE_MAX_BYTES
+        value: "350000"
+      - key: IMAGE_UPLOAD_HOURLY_LIMIT
+        value: "10"
+      - key: IMAGE_UPLOAD_DAILY_LIMIT
+        value: "30"
       - key: ALLOWED_ORIGINS
         value: "*"
       - key: PYTHON_VERSION
