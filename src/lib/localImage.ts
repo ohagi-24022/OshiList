@@ -83,7 +83,7 @@ export async function pickGoodsImage() {
     allowsEditing: true,
     aspect: [1, 1],
     mediaTypes: ['images'],
-    quality: 0.85,
+    quality: 0.65,
   });
 
   return persistPickerResult(result);
@@ -96,7 +96,7 @@ export async function takeGoodsPhoto() {
     allowsEditing: true,
     aspect: [1, 1],
     mediaTypes: ['images'],
-    quality: 0.85,
+    quality: 0.65,
   });
 
   return persistPickerResult(result);

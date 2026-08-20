@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { uploadSharedImageCandidate } from '../lib/productLookup';
 import { useAppTheme } from '../store/ThemeContext';
 import { Goods, GoodsInput, GoodsStatus } from '../types';
 import { GoodsImageField } from './GoodsImageField';
@@ -55,6 +56,7 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
   const [tags, setTags] = useState(item.tags);
   const [favorite, setFavorite] = useState(item.favorite);
   const [saving, setSaving] = useState(false);
+  const [shareImage, setShareImage] = useState(false);
 
   useEffect(() => {
     setJanCode(item.janCode ?? '');
@@ -78,6 +80,7 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
     setPickupDate(item.pickupDate);
     setTags(item.tags);
     setFavorite(item.favorite);
+    setShareImage(false);
   }, [item]);
 
   const disabled = !boxName.trim() || saving;
@@ -118,6 +121,22 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
         tags,
         favorite,
       });
+      if (shareImage && imageUrl.trim().startsWith('file://')) {
+        try {
+          await uploadSharedImageCandidate({
+            janCode: janCode.trim() || null,
+            boxName: boxName.trim(),
+            seriesName: seriesName.trim(),
+            characterName: characterName.trim(),
+            variantName: variantName.trim() || '通常版',
+            imageKind: characterName.trim() ? 'variant' : 'parent',
+            imageUri: imageUrl.trim(),
+          });
+          setShareImage(false);
+        } catch (error) {
+          Alert.alert('共有画像を送信できませんでした', error instanceof Error ? error.message : 'ローカル保存は完了しています。');
+        }
+      }
     } finally {
       setSaving(false);
     }
@@ -173,6 +192,20 @@ export function GoodsEditForm({ item, source = 'manage', onCancel, onSave }: Pro
 
       <Text style={[styles.label, { color: colors.muted }]}>画像</Text>
       <GoodsImageField value={imageUrl} onChange={setImageUrl} />
+      {imageUrl.trim().startsWith('file://') ? (
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: shareImage }}
+          onPress={() => setShareImage((current) => !current)}
+          style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+        >
+          <Ionicons color={shareImage ? colors.primary : colors.muted} name={shareImage ? 'checkmark-circle' : 'ellipse-outline'} size={22} />
+          <View style={styles.checkTextBlock}>
+            <Text style={[styles.checkTitle, { color: colors.text }]}>商品画像として共有</Text>
+            <Text style={[styles.checkHelp, { color: colors.muted }]}>同じ商品を登録する人の画像候補として、容量制限つきで送信します。</Text>
+          </View>
+        </Pressable>
+      ) : null}
 
       <Pressable
         accessibilityRole="checkbox"

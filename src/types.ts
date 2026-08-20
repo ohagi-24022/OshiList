@@ -101,6 +101,23 @@ export type ProductSearchCandidate = {
   sourceLabel: string;
 };
 
+export type SharedImageCandidate = {
+  id: string;
+  janCode: string | null;
+  boxName: string;
+  seriesName: string;
+  characterName: string;
+  variantName: string;
+  imageKind: 'parent' | 'variant';
+  imageUrl: string;
+  status: string;
+  selectedCount: number;
+  rejectedCount: number;
+  reportCount: number;
+  sameImageCount: number;
+  score: number;
+};
+
 export type ReceiptItemCandidate = {
   rawText: string;
   normalizedQuery: string;

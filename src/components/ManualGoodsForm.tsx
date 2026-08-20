@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { uploadSharedImageCandidate } from '../lib/productLookup';
 import { useGoods } from '../store/GoodsContext';
 import { useRegistrationPresets } from '../store/RegistrationPresetContext';
 import { useAppTheme } from '../store/ThemeContext';
@@ -60,6 +61,7 @@ export function ManualGoodsForm({
   const [quantity, setQuantity] = useState('1');
   const [status, setStatus] = useState<GoodsStatus>(initialStatus);
   const [saving, setSaving] = useState(false);
+  const [shareImage, setShareImage] = useState(false);
 
   useEffect(() => {
     setBoxName(initialBoxName);
@@ -69,6 +71,7 @@ export function ManualGoodsForm({
     setImageUrl(initialImageUrl ?? '');
     setIsRandom(initialIsRandom);
     setStatus(initialStatus);
+    setShareImage(false);
   }, [initialBoxName, initialSeriesName, initialCharacterName, initialVariantName, initialImageUrl, initialIsRandom, initialStatus]);
 
   const seriesSuggestions = useMemo(() => unique(goods.map((item) => item.seriesName)), [goods]);
@@ -110,6 +113,21 @@ export function ManualGoodsForm({
         status,
         eventId: initialEventId,
       });
+      if (shareImage && imageUrl.trim().startsWith('file://')) {
+        try {
+          await uploadSharedImageCandidate({
+            janCode: initialJanCode ?? null,
+            boxName: boxName.trim(),
+            seriesName: seriesName.trim(),
+            characterName: characterName.trim(),
+            variantName: variantName.trim() || '通常版',
+            imageKind: characterName.trim() ? 'variant' : 'parent',
+            imageUri: imageUrl.trim(),
+          });
+        } catch (error) {
+          Alert.alert('共有画像を送信できませんでした', error instanceof Error ? error.message : 'ローカル登録は完了しています。');
+        }
+      }
       setBoxName('');
       setSeriesName('');
       setCharacterName('');
@@ -118,6 +136,7 @@ export function ManualGoodsForm({
       setIsRandom(initialIsRandom);
       setQuantity('1');
       setStatus(initialStatus);
+      setShareImage(false);
     } finally {
       setSaving(false);
     }
@@ -213,6 +232,20 @@ export function ManualGoodsForm({
 
       <Text style={[styles.label, { color: colors.muted }]}>画像</Text>
       <GoodsImageField value={imageUrl} onChange={setImageUrl} />
+      {imageUrl.trim().startsWith('file://') && !initialEventId ? (
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: shareImage }}
+          onPress={() => setShareImage((current) => !current)}
+          style={[styles.checkRow, { backgroundColor: colors.elevated, borderColor: colors.border }]}
+        >
+          <Ionicons color={shareImage ? colors.primary : colors.muted} name={shareImage ? 'checkmark-circle' : 'ellipse-outline'} size={22} />
+          <View style={styles.checkTextBlock}>
+            <Text style={[styles.checkTitle, { color: colors.text }]}>商品画像として共有</Text>
+            <Text style={[styles.checkHelp, { color: colors.muted }]}>同じ商品を登録する人の画像候補として、容量制限つきで送信します。</Text>
+          </View>
+        </Pressable>
+      ) : null}
 
       <Pressable
         accessibilityRole="checkbox"

@@ -47,9 +47,17 @@ SUPABASE_LOOKUP_TABLE=product_lookup_candidates
 SUPABASE_CANDIDATE_VOTE_TABLE=product_lookup_candidate_votes
 SUPABASE_LINEUP_TABLE=product_lineup_suggestions
 SUPABASE_LINEUP_VOTE_TABLE=product_lineup_votes
+SUPABASE_IMAGE_TABLE=product_image_candidates
+SUPABASE_IMAGE_VOTE_TABLE=product_image_votes
+SUPABASE_IMAGE_BUCKET=product-images
 LEARNING_DEVICE_SALT=replace_with_random_server_secret
 LINEUP_ACCEPT_SELECTED_MIN=2
 LINEUP_REPORT_HIDE_MIN=3
+IMAGE_ACCEPT_SIGNAL_MIN=2
+IMAGE_REPORT_HIDE_MIN=3
+IMAGE_MAX_BYTES=350000
+IMAGE_UPLOAD_HOURLY_LIMIT=10
+IMAGE_UPLOAD_DAILY_LIMIT=30
 ```
 
 Create the cache table in Supabase:
@@ -140,6 +148,40 @@ create table if not exists product_lineup_votes (
 
 Keep RLS enabled and do not grant `anon` or `authenticated` access to these tables. The backend reads and writes them with the service role key only.
 
+## Shared Product Images
+
+User-provided images are optional and are stored separately from local collection images. The app sends a local image only when the user explicitly enables sharing. The backend stores the file in Supabase Storage and keeps only metadata and voting counters in Postgres.
+
+Apply the schema in `backend/shared_image_schema.sql` to create:
+
+```text
+Storage bucket:
+product-images
+
+Tables:
+product_image_candidates
+product_image_votes
+```
+
+`/lookup` uses accepted community images only when external product APIs and web search did not provide an image. A candidate becomes usable when the positive signal count passes:
+
+```text
+selected_count + same_image_count - 1 >= IMAGE_ACCEPT_SIGNAL_MIN
+positive signals > rejected_count + report_count
+report_count < IMAGE_REPORT_HIDE_MIN
+```
+
+The first implementation intentionally keeps image sharing conservative:
+
+```text
+1端末あたり 1時間 IMAGE_UPLOAD_HOURLY_LIMIT 枚まで
+1端末あたり 1日 IMAGE_UPLOAD_DAILY_LIMIT 枚まで
+1画像 IMAGE_MAX_BYTES bytes まで
+JPEG / PNG / WebP のみ
+```
+
+For production, keep the bucket public for read-only image delivery, but do not expose the metadata tables to `anon` or `authenticated`; the backend uses the service role key server-side.
+
 For local development without Supabase, the JSON fallback can be used:
 
 ```text
@@ -167,9 +209,17 @@ SUPABASE_LOOKUP_TABLE=product_lookup_candidates
 SUPABASE_CANDIDATE_VOTE_TABLE=product_lookup_candidate_votes
 SUPABASE_LINEUP_TABLE=product_lineup_suggestions
 SUPABASE_LINEUP_VOTE_TABLE=product_lineup_votes
+SUPABASE_IMAGE_TABLE=product_image_candidates
+SUPABASE_IMAGE_VOTE_TABLE=product_image_votes
+SUPABASE_IMAGE_BUCKET=product-images
 LEARNING_DEVICE_SALT=replace_with_random_server_secret
 LINEUP_ACCEPT_SELECTED_MIN=2
 LINEUP_REPORT_HIDE_MIN=3
+IMAGE_ACCEPT_SIGNAL_MIN=2
+IMAGE_REPORT_HIDE_MIN=3
+IMAGE_MAX_BYTES=350000
+IMAGE_UPLOAD_HOURLY_LIMIT=10
+IMAGE_UPLOAD_DAILY_LIMIT=30
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 ```
@@ -226,9 +276,17 @@ SUPABASE_LOOKUP_TABLE=product_lookup_candidates
 SUPABASE_CANDIDATE_VOTE_TABLE=product_lookup_candidate_votes
 SUPABASE_LINEUP_TABLE=product_lineup_suggestions
 SUPABASE_LINEUP_VOTE_TABLE=product_lineup_votes
+SUPABASE_IMAGE_TABLE=product_image_candidates
+SUPABASE_IMAGE_VOTE_TABLE=product_image_votes
+SUPABASE_IMAGE_BUCKET=product-images
 LEARNING_DEVICE_SALT=replace_with_random_server_secret
 LINEUP_ACCEPT_SELECTED_MIN=2
 LINEUP_REPORT_HIDE_MIN=3
+IMAGE_ACCEPT_SIGNAL_MIN=2
+IMAGE_REPORT_HIDE_MIN=3
+IMAGE_MAX_BYTES=350000
+IMAGE_UPLOAD_HOURLY_LIMIT=10
+IMAGE_UPLOAD_DAILY_LIMIT=30
 LOOKUP_CACHE_PATH=data/lookup_candidates.json
 ALLOWED_ORIGINS=*
 PYTHON_VERSION=3.12.8

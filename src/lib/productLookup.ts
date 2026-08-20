@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 
-import { PhotoInferResult, ProductLookupCandidate, ProductLookupResult, ProductSearchCandidate, ReceiptParseResult } from '../types';
+import { PhotoInferResult, ProductLookupCandidate, ProductLookupResult, ProductSearchCandidate, ReceiptParseResult, SharedImageCandidate } from '../types';
 
 type LookupApiResponse = Partial<{
   janCode: string;
@@ -97,6 +98,34 @@ type PhotoInferApiResponse = Partial<{
   warnings: string[];
 }>;
 
+type SharedImageCandidateApiResponse = Partial<{
+  id: string;
+  janCode: string | null;
+  jan_code: string | null;
+  boxName: string;
+  box_name: string;
+  seriesName: string;
+  series_name: string;
+  characterName: string;
+  character_name: string;
+  variantName: string;
+  variant_name: string;
+  imageKind: 'parent' | 'variant';
+  image_kind: 'parent' | 'variant';
+  imageUrl: string;
+  image_url: string;
+  status: string;
+  selectedCount: number;
+  selected_count: number;
+  rejectedCount: number;
+  rejected_count: number;
+  reportCount: number;
+  report_count: number;
+  sameImageCount: number;
+  same_image_count: number;
+  score: number;
+}>;
+
 const LOOKUP_API_URL = process.env.EXPO_PUBLIC_OSHILIST_LOOKUP_API_URL;
 const DEFAULT_TIMEOUT_MS = 30000;
 const LOOKUP_TIMEOUT_MS = 90000;
@@ -162,6 +191,38 @@ function mapLookupCandidate(candidate: ProductLookupCandidateApiResponse): Produ
     rejectedCount: Number(candidate.rejectedCount ?? candidate.rejected_count ?? 0),
     score: Number(candidate.score ?? 0),
   };
+}
+
+function mapSharedImageCandidate(candidate: SharedImageCandidateApiResponse): SharedImageCandidate | null {
+  const id = candidate.id ?? '';
+  const boxName = candidate.boxName ?? candidate.box_name ?? '';
+  const imageUrl = candidate.imageUrl ?? candidate.image_url ?? '';
+  if (!id || !boxName.trim() || !imageUrl.trim()) {
+    return null;
+  }
+  return {
+    id,
+    janCode: candidate.janCode ?? candidate.jan_code ?? null,
+    boxName,
+    seriesName: candidate.seriesName ?? candidate.series_name ?? '',
+    characterName: candidate.characterName ?? candidate.character_name ?? '',
+    variantName: candidate.variantName ?? candidate.variant_name ?? '通常版',
+    imageKind: candidate.imageKind ?? candidate.image_kind ?? 'parent',
+    imageUrl,
+    status: candidate.status ?? 'pending',
+    selectedCount: Number(candidate.selectedCount ?? candidate.selected_count ?? 0),
+    rejectedCount: Number(candidate.rejectedCount ?? candidate.rejected_count ?? 0),
+    reportCount: Number(candidate.reportCount ?? candidate.report_count ?? 0),
+    sameImageCount: Number(candidate.sameImageCount ?? candidate.same_image_count ?? 1),
+    score: Number(candidate.score ?? 0),
+  };
+}
+
+function mimeTypeFromImageUri(uri: string) {
+  const cleanUri = uri.split('?')[0].toLowerCase();
+  if (cleanUri.endsWith('.png')) return 'image/png';
+  if (cleanUri.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
 }
 
 export async function lookupProductByJan(janCode: string, options: { preferredStoreDomain?: string | null } = {}): Promise<ProductLookupResult> {
@@ -281,6 +342,72 @@ export async function sendLineupFeedback(input: {
       reportCount: Number(variant.reportCount ?? variant.report_count ?? 0),
     }))
     .filter((variant) => variant.characterName.trim().length > 0);
+}
+
+export async function uploadSharedImageCandidate(input: {
+  janCode?: string | null;
+  boxName: string;
+  seriesName?: string;
+  characterName?: string;
+  variantName?: string;
+  imageKind?: 'parent' | 'variant';
+  imageUri: string;
+  mimeType?: string;
+}): Promise<SharedImageCandidate | null> {
+  if (!input.boxName.trim() || !input.imageUri.trim() || !input.imageUri.startsWith('file://')) {
+    return null;
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('オフラインのため共有画像を送信できません。');
+  }
+
+  const imageBase64 = await FileSystem.readAsStringAsync(input.imageUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl()}/images/candidates`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        janCode: input.janCode ?? null,
+        boxName: input.boxName,
+        seriesName: input.seriesName ?? '',
+        characterName: input.characterName ?? '',
+        variantName: input.variantName?.trim() || '通常版',
+        imageKind: input.imageKind ?? 'parent',
+        imageBase64,
+        mimeType: input.mimeType ?? mimeTypeFromImageUri(input.imageUri),
+        deviceId: await getLearningDeviceId(),
+      }),
+    },
+    RECEIPT_TIMEOUT_MS,
+  );
+  const payload = (await response.json().catch(() => null)) as SharedImageCandidateApiResponse | { detail?: string } | null;
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+  if (!payload || ('detail' in payload && !('id' in payload))) {
+    return null;
+  }
+  return mapSharedImageCandidate(payload as SharedImageCandidateApiResponse);
+}
+
+export async function sendSharedImageFeedback(
+  candidateId: string,
+  action: 'selected' | 'rejected' | 'reported',
+): Promise<SharedImageCandidate[]> {
+  if (!candidateId.trim()) return [];
+  const response = await fetchWithTimeout(`${apiBaseUrl()}/images/candidates/${encodeURIComponent(candidateId)}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, deviceId: await getLearningDeviceId() }),
+  });
+  const payload = (await response.json().catch(() => null)) as SharedImageCandidateApiResponse[] | { detail?: string } | null;
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+  return (Array.isArray(payload) ? payload : []).map(mapSharedImageCandidate).filter((candidate): candidate is SharedImageCandidate => Boolean(candidate));
 }
 
 export async function parseReceiptImage(imageBase64: string, mimeType = 'image/jpeg'): Promise<ReceiptParseResult> {

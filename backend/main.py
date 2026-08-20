@@ -1,9 +1,10 @@
 import html
+import base64
 import hashlib
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +38,17 @@ SUPABASE_LOOKUP_TABLE = os.getenv("SUPABASE_LOOKUP_TABLE", "product_lookup_candi
 SUPABASE_CANDIDATE_VOTE_TABLE = os.getenv("SUPABASE_CANDIDATE_VOTE_TABLE", "product_lookup_candidate_votes")
 SUPABASE_LINEUP_TABLE = os.getenv("SUPABASE_LINEUP_TABLE", "product_lineup_suggestions")
 SUPABASE_LINEUP_VOTE_TABLE = os.getenv("SUPABASE_LINEUP_VOTE_TABLE", "product_lineup_votes")
+SUPABASE_IMAGE_TABLE = os.getenv("SUPABASE_IMAGE_TABLE", "product_image_candidates")
+SUPABASE_IMAGE_VOTE_TABLE = os.getenv("SUPABASE_IMAGE_VOTE_TABLE", "product_image_votes")
+SUPABASE_IMAGE_BUCKET = os.getenv("SUPABASE_IMAGE_BUCKET", "product-images")
 LEARNING_DEVICE_SALT = os.getenv("LEARNING_DEVICE_SALT") or SUPABASE_SERVICE_ROLE_KEY or "oshilist-local-learning"
 LINEUP_ACCEPT_SELECTED_MIN = int_env("LINEUP_ACCEPT_SELECTED_MIN", 2)
 LINEUP_REPORT_HIDE_MIN = int_env("LINEUP_REPORT_HIDE_MIN", 3)
+IMAGE_ACCEPT_SIGNAL_MIN = int_env("IMAGE_ACCEPT_SIGNAL_MIN", 2)
+IMAGE_REPORT_HIDE_MIN = int_env("IMAGE_REPORT_HIDE_MIN", 3)
+IMAGE_MAX_BYTES = int_env("IMAGE_MAX_BYTES", 350_000)
+IMAGE_UPLOAD_HOURLY_LIMIT = int_env("IMAGE_UPLOAD_HOURLY_LIMIT", 10)
+IMAGE_UPLOAD_DAILY_LIMIT = int_env("IMAGE_UPLOAD_DAILY_LIMIT", 30)
 WEB_SEARCH_PROVIDER = os.getenv("WEB_SEARCH_PROVIDER", "brave").strip().lower()
 LOOKUP_CACHE_PATH = Path(os.getenv("LOOKUP_CACHE_PATH", "data/lookup_candidates.json"))
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
@@ -150,6 +159,40 @@ class LineupFeedbackRequest(BaseModel):
     action: str = Field(..., pattern="^(selected|rejected|reported)$")
 
 
+class ImageCandidate(BaseModel):
+    id: str
+    janCode: str | None = None
+    boxName: str
+    seriesName: str = ""
+    characterName: str = ""
+    variantName: str = "通常版"
+    imageKind: str = Field(default="parent", pattern="^(parent|variant)$")
+    imageUrl: str
+    status: str = "pending"
+    selectedCount: int = 0
+    rejectedCount: int = 0
+    reportCount: int = 0
+    sameImageCount: int = 1
+    score: float = 0.0
+
+
+class ImageCandidateUploadRequest(BaseModel):
+    janCode: str | None = Field(default=None, min_length=8, max_length=14)
+    boxName: str = Field(..., min_length=1, max_length=240)
+    seriesName: str = Field(default="", max_length=120)
+    characterName: str = Field(default="", max_length=120)
+    variantName: str = Field(default="通常版", max_length=120)
+    imageKind: str = Field(default="parent", pattern="^(parent|variant)$")
+    imageBase64: str = Field(..., min_length=1)
+    mimeType: str = Field(default="image/jpeg")
+    deviceId: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class ImageCandidateFeedbackRequest(BaseModel):
+    action: str = Field(..., pattern="^(selected|rejected|reported)$")
+    deviceId: str | None = Field(default=None, min_length=8, max_length=128)
+
+
 class ReceiptParseRequest(BaseModel):
     imageBase64: str = Field(..., min_length=1)
     mimeType: str = Field(default="image/jpeg")
@@ -234,13 +277,14 @@ async def privacy_page() -> str:
       <body>
         <main>
           <h1>プライバシーポリシー</h1>
-          <p>{app_name}は、推しグッズ管理を補助するためにJANコード、商品名、商品画像URL、登録内容、マイストア情報を利用します。</p>
+          <p>{app_name}は、推しグッズ管理を補助するためにJANコード、商品名、商品画像URL、登録内容、マイストア情報、ユーザーが明示的に共有した商品画像を利用します。</p>
           <h2>取得する情報</h2>
           <ul>
             <li>ユーザーが入力またはスキャンしたJANコード</li>
             <li>商品検索APIから取得した商品名、商品画像URL</li>
             <li>ユーザーがアプリ内で登録したグッズ情報</li>
             <li>ユーザーが登録または選択したストア名、URL、ドメイン</li>
+            <li>ユーザーが商品画像として共有した画像の保存先と評価情報</li>
             <li>商品候補やラインナップ候補の選択、却下、通報の情報</li>
             <li>共有学習の重複投票防止に使う匿名端末IDのハッシュ値</li>
           </ul>
@@ -249,7 +293,7 @@ async def privacy_page() -> str:
           <h2>外部API</h2>
           <p>商品情報取得のため、楽天市場API、Yahoo!ショッピングAPI、Gemini API、Brave Search APIを利用する場合があります。マイストアが選択されている場合、検索精度向上のためストアドメインを検索条件として利用することがあります。</p>
           <h2>保存</h2>
-          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索、ラインナップ解析、共有学習候補の保存と集計に利用します。匿名端末IDはサーバー側でハッシュ化して保存し、氏名やメールアドレス等とは紐付けません。</p>
+          <p>コレクション情報は主に端末内に保存されます。バックエンドは商品検索、ラインナップ解析、共有学習候補、共有画像候補の保存と集計に利用します。匿名端末IDはサーバー側でハッシュ化して保存し、氏名やメールアドレス等とは紐付けません。</p>
         </main>
       </body>
     </html>
@@ -427,6 +471,56 @@ def shared_lineup_is_accepted(selected_count: int, rejected_count: int, report_c
         and selected_count > rejected_count + report_count
         and report_count < LINEUP_REPORT_HIDE_MIN
     )
+
+
+def shared_image_is_accepted(selected_count: int, rejected_count: int, report_count: int, same_image_count: int) -> bool:
+    positive_signals = selected_count + max(0, same_image_count - 1)
+    return (
+        positive_signals >= IMAGE_ACCEPT_SIGNAL_MIN
+        and positive_signals > rejected_count + report_count
+        and report_count < IMAGE_REPORT_HIDE_MIN
+    )
+
+
+def normalize_image_key_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def image_score(row: dict[str, Any]) -> float:
+    selected = int(row.get("selected_count") or 0)
+    rejected = int(row.get("rejected_count") or 0)
+    reported = int(row.get("report_count") or 0)
+    same = int(row.get("same_image_count") or 1)
+    status = str(row.get("status") or "pending")
+    status_bonus = 30 if status == "accepted" else 0
+    return status_bonus + selected * 6 + max(0, same - 1) * 4 - rejected * 5 - reported * 12
+
+
+def public_storage_url(storage_path: str) -> str:
+    return f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/{SUPABASE_IMAGE_BUCKET}/{storage_path}"
+
+
+def image_extension_for_mime(mime_type: str) -> str:
+    normalized = mime_type.strip().lower()
+    if normalized == "image/webp":
+        return "webp"
+    if normalized == "image/png":
+        return "png"
+    return "jpg"
+
+
+def decode_image_base64(image_base64: str, mime_type: str) -> bytes:
+    if mime_type.strip().lower() not in {"image/jpeg", "image/jpg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="共有画像はJPEG、PNG、WebPのみ対応しています。")
+    try:
+        data = base64.b64decode(image_base64, validate=True)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="画像データを読み取れませんでした。")
+    if not data:
+        raise HTTPException(status_code=400, detail="画像データが空です。")
+    if len(data) > IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"共有画像が大きすぎます。{IMAGE_MAX_BYTES // 1000}KB以下に圧縮してから送信してください。")
+    return data
 
 
 def load_lookup_cache() -> dict[str, Any]:
@@ -661,6 +755,324 @@ def merge_lineup_items(primary: list[LineupItem], secondary: list[LineupItem]) -
         seen.add(key)
         merged.append(item)
     return merged
+
+
+def supabase_image_row_to_candidate(row: dict[str, Any]) -> ImageCandidate:
+    storage_path = str(row.get("storage_path") or "")
+    image_url = str(row.get("public_url") or "") or (public_storage_url(storage_path) if storage_path else "")
+    return ImageCandidate(
+        id=str(row.get("id") or ""),
+        janCode=str(row.get("jan_code") or "") or None,
+        boxName=str(row.get("box_name") or ""),
+        seriesName=str(row.get("series_name") or ""),
+        characterName=str(row.get("character_name") or ""),
+        variantName=str(row.get("variant_name") or "通常版") or "通常版",
+        imageKind=str(row.get("image_kind") or "parent"),
+        imageUrl=image_url,
+        status=str(row.get("status") or "pending"),
+        selectedCount=max(0, int(row.get("selected_count") or 0)),
+        rejectedCount=max(0, int(row.get("rejected_count") or 0)),
+        reportCount=max(0, int(row.get("report_count") or 0)),
+        sameImageCount=max(1, int(row.get("same_image_count") or 1)),
+        score=image_score(row),
+    )
+
+
+def image_query_params(
+    jan: str | None,
+    box_name: str,
+    image_kind: str = "parent",
+    character_name: str = "",
+    variant_name: str = "",
+) -> dict[str, str]:
+    normalized_box_name = normalize_box_name_for_learning(box_name)
+    params = {"select": "*", "image_kind": f"eq.{image_kind}"}
+    if jan:
+        params["jan_code"] = f"eq.{jan}"
+    else:
+        params["normalized_box_name"] = f"eq.{normalized_box_name}"
+    if image_kind == "variant":
+        params["normalized_character_name"] = f"eq.{normalize_learning_text(character_name)}"
+        params["normalized_variant_name"] = f"eq.{normalize_learning_text(variant_name or '通常版')}"
+    return params
+
+
+async def supabase_fetch_image_candidates(
+    jan: str | None,
+    box_name: str,
+    image_kind: str = "parent",
+    character_name: str = "",
+    variant_name: str = "",
+) -> list[ImageCandidate]:
+    if not supabase_configured():
+        return []
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.get(
+            supabase_table_url(SUPABASE_IMAGE_TABLE),
+            params=image_query_params(jan, box_name, image_kind, character_name, variant_name),
+            headers=supabase_headers(),
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase image candidate lookup failed. status={response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    rows = payload if isinstance(payload, list) else []
+    candidates = [supabase_image_row_to_candidate(row) for row in rows if isinstance(row, dict)]
+    candidates.sort(key=lambda item: item.score, reverse=True)
+    return candidates
+
+
+async def supabase_best_accepted_image_url(
+    jan: str | None,
+    box_name: str,
+    image_kind: str = "parent",
+    character_name: str = "",
+    variant_name: str = "",
+) -> str | None:
+    candidates = await supabase_fetch_image_candidates(jan, box_name, image_kind, character_name, variant_name)
+    for candidate in candidates:
+        if candidate.status == "accepted" or shared_image_is_accepted(
+            candidate.selectedCount,
+            candidate.rejectedCount,
+            candidate.reportCount,
+            candidate.sameImageCount,
+        ):
+            return candidate.imageUrl
+    return None
+
+
+async def supabase_upload_shared_image(storage_path: str, data: bytes, mime_type: str) -> None:
+    if not supabase_configured():
+        raise HTTPException(status_code=503, detail="共有画像の保存先が未設定です。")
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(
+            f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/{SUPABASE_IMAGE_BUCKET}/{storage_path}",
+            headers={
+                **supabase_headers(),
+                "Content-Type": mime_type,
+                "Cache-Control": "31536000",
+                "x-upsert": "true",
+            },
+            content=data,
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase image upload failed. status={response.status_code}: {response.text[:200]}")
+
+
+async def supabase_count_recent_image_uploads(device_hash: str) -> tuple[int, int]:
+    if not supabase_configured():
+        return 0, 0
+    hourly_since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    daily_since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    async with httpx.AsyncClient(timeout=12) as client:
+        hourly = await client.get(
+            supabase_table_url(SUPABASE_IMAGE_TABLE),
+            params={
+                "select": "id",
+                "device_hash": f"eq.{device_hash}",
+                "created_at": f"gte.{hourly_since}",
+            },
+            headers={**supabase_headers(), "Prefer": "count=exact"},
+        )
+        daily = await client.get(
+            supabase_table_url(SUPABASE_IMAGE_TABLE),
+            params={
+                "select": "id",
+                "device_hash": f"eq.{device_hash}",
+                "created_at": f"gte.{daily_since}",
+            },
+            headers={**supabase_headers(), "Prefer": "count=exact"},
+        )
+    hourly_count = int(hourly.headers.get("content-range", "0-0/0").split("/")[-1]) if hourly.status_code < 400 else 0
+    daily_count = int(daily.headers.get("content-range", "0-0/0").split("/")[-1]) if daily.status_code < 400 else 0
+    return hourly_count, daily_count
+
+
+async def supabase_store_image_candidate(request: ImageCandidateUploadRequest) -> ImageCandidate:
+    if not supabase_configured():
+        raise HTTPException(status_code=503, detail="共有画像の保存先が未設定です。")
+    device_hash = learning_device_hash(request.deviceId)
+    if not device_hash:
+        raise HTTPException(status_code=400, detail="共有画像の投稿には端末IDが必要です。")
+    hourly_count, daily_count = await supabase_count_recent_image_uploads(device_hash)
+    if hourly_count >= IMAGE_UPLOAD_HOURLY_LIMIT or daily_count >= IMAGE_UPLOAD_DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail="共有画像の投稿数が上限に達しました。時間をおいて再度お試しください。")
+
+    jan_code = validate_jan(request.janCode) if request.janCode else ""
+    image_data = decode_image_base64(request.imageBase64, request.mimeType)
+    sha256 = hashlib.sha256(image_data).hexdigest()
+    normalized_box_name = normalize_box_name_for_learning(request.boxName)
+    normalized_character = normalize_learning_text(request.characterName)
+    normalized_variant = normalize_learning_text(request.variantName or "通常版")
+    image_kind = request.imageKind
+    ext = image_extension_for_mime(request.mimeType)
+    key_root = jan_code or hashlib.sha1(normalized_box_name.encode("utf-8")).hexdigest()[:16]
+    storage_path = f"{key_root}/{image_kind}/{sha256[:20]}.{ext}"
+    public_url = public_storage_url(storage_path)
+
+    existing_rows: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(timeout=12) as client:
+      existing_response = await client.get(
+          supabase_table_url(SUPABASE_IMAGE_TABLE),
+          params={
+              **image_query_params(jan_code or None, request.boxName, image_kind, request.characterName, request.variantName),
+              "sha256": f"eq.{sha256}",
+              "limit": "1",
+          },
+          headers=supabase_headers(),
+      )
+      if existing_response.status_code < 400:
+          payload = existing_response.json()
+          existing_rows = payload if isinstance(payload, list) else []
+
+    if existing_rows:
+        existing = existing_rows[0]
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.patch(
+                supabase_table_url(SUPABASE_IMAGE_TABLE),
+                params={"id": f"eq.{existing['id']}"},
+                headers=supabase_headers(),
+                json={
+                    "same_image_count": max(1, int(existing.get("same_image_count") or 1) + 1),
+                    "updated_at": now_iso(),
+                },
+            )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Supabase image candidate update failed. status={response.status_code}: {response.text[:200]}")
+        updated = await supabase_fetch_image_candidates(jan_code or None, request.boxName, image_kind, request.characterName, request.variantName)
+        return next((candidate for candidate in updated if candidate.id == str(existing["id"])), updated[0])
+
+    await supabase_upload_shared_image(storage_path, image_data, request.mimeType)
+    async with httpx.AsyncClient(timeout=12) as client:
+        response = await client.post(
+            supabase_table_url(SUPABASE_IMAGE_TABLE),
+            headers=supabase_headers("return=representation"),
+            json={
+                "jan_code": jan_code,
+                "box_name": request.boxName.strip(),
+                "normalized_box_name": normalized_box_name,
+                "series_name": request.seriesName.strip(),
+                "character_name": request.characterName.strip(),
+                "normalized_character_name": normalized_character,
+                "variant_name": request.variantName.strip() or "通常版",
+                "normalized_variant_name": normalized_variant,
+                "image_kind": image_kind,
+                "storage_path": storage_path,
+                "public_url": public_url,
+                "sha256": sha256,
+                "mime_type": request.mimeType,
+                "file_size": len(image_data),
+                "status": "pending",
+                "device_hash": device_hash,
+            },
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase image candidate save failed. status={response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    row = payload[0] if isinstance(payload, list) and payload else None
+    if not isinstance(row, dict):
+        candidates = await supabase_fetch_image_candidates(jan_code or None, request.boxName, image_kind, request.characterName, request.variantName)
+        if candidates:
+            return candidates[0]
+        raise HTTPException(status_code=502, detail="共有画像候補を保存できませんでした。")
+    return supabase_image_row_to_candidate(row)
+
+
+async def supabase_apply_image_feedback(candidate_id: str, request: ImageCandidateFeedbackRequest) -> list[ImageCandidate]:
+    if not supabase_configured():
+        raise HTTPException(status_code=503, detail="共有画像の保存先が未設定です。")
+    device_hash = learning_device_hash(request.deviceId)
+    if not device_hash:
+        raise HTTPException(status_code=400, detail="共有画像の評価には端末IDが必要です。")
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        row_response = await client.get(
+            supabase_table_url(SUPABASE_IMAGE_TABLE),
+            params={"id": f"eq.{candidate_id}", "select": "*", "limit": "1"},
+            headers=supabase_headers(),
+        )
+    if row_response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase image candidate lookup failed. status={row_response.status_code}: {row_response.text[:200]}")
+    rows = row_response.json() if isinstance(row_response.json(), list) else []
+    matched = rows[0] if rows else None
+    if not isinstance(matched, dict):
+        raise HTTPException(status_code=404, detail="指定された画像候補が見つかりませんでした。")
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        vote_response = await client.get(
+            supabase_table_url(SUPABASE_IMAGE_VOTE_TABLE),
+            params={"candidate_id": f"eq.{candidate_id}", "device_hash": f"eq.{device_hash}", "select": "*", "limit": "1"},
+            headers=supabase_headers(),
+        )
+        existing_vote = None
+        if vote_response.status_code < 400:
+            votes = vote_response.json() if isinstance(vote_response.json(), list) else []
+            existing_vote = votes[0] if votes else None
+        previous_action = str(existing_vote.get("action")) if isinstance(existing_vote, dict) else None
+        if previous_action == request.action:
+            return await supabase_fetch_image_candidates(
+                str(matched.get("jan_code") or "") or None,
+                str(matched.get("box_name") or ""),
+                str(matched.get("image_kind") or "parent"),
+                str(matched.get("character_name") or ""),
+                str(matched.get("variant_name") or "通常版"),
+            )
+
+        deltas = {
+            "selected_count": (1 if request.action == "selected" else 0) - (1 if previous_action == "selected" else 0),
+            "rejected_count": (1 if request.action == "rejected" else 0) - (1 if previous_action == "rejected" else 0),
+            "report_count": (1 if request.action == "reported" else 0) - (1 if previous_action == "reported" else 0),
+        }
+        now = now_iso()
+        if existing_vote:
+            response = await client.patch(
+                supabase_table_url(SUPABASE_IMAGE_VOTE_TABLE),
+                params={"id": f"eq.{existing_vote['id']}"},
+                headers=supabase_headers(),
+                json={"action": request.action, "updated_at": now},
+            )
+        else:
+            response = await client.post(
+                supabase_table_url(SUPABASE_IMAGE_VOTE_TABLE),
+                headers=supabase_headers(),
+                json={"candidate_id": candidate_id, "device_hash": device_hash, "action": request.action},
+            )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Supabase image vote failed. status={response.status_code}: {response.text[:200]}")
+
+        selected = max(0, int(matched.get("selected_count") or 0) + deltas["selected_count"])
+        rejected = max(0, int(matched.get("rejected_count") or 0) + deltas["rejected_count"])
+        reported = max(0, int(matched.get("report_count") or 0) + deltas["report_count"])
+        same = max(1, int(matched.get("same_image_count") or 1))
+        status = str(matched.get("status") or "pending")
+        if reported >= IMAGE_REPORT_HIDE_MIN:
+            status = "rejected"
+        elif shared_image_is_accepted(selected, rejected, reported, same):
+            status = "accepted"
+        patch_payload: dict[str, Any] = {
+            "selected_count": selected,
+            "rejected_count": rejected,
+            "report_count": reported,
+            "status": status,
+            "updated_at": now,
+        }
+        if request.action == "selected":
+            patch_payload["last_selected_at"] = now
+        update_response = await client.patch(
+            supabase_table_url(SUPABASE_IMAGE_TABLE),
+            params={"id": f"eq.{candidate_id}"},
+            headers=supabase_headers(),
+            json=patch_payload,
+        )
+    if update_response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Supabase image feedback failed. status={update_response.status_code}: {update_response.text[:200]}")
+    return await supabase_fetch_image_candidates(
+        str(matched.get("jan_code") or "") or None,
+        str(matched.get("box_name") or ""),
+        str(matched.get("image_kind") or "parent"),
+        str(matched.get("character_name") or ""),
+        str(matched.get("variant_name") or "通常版"),
+    )
 
 
 def supabase_row_to_candidate_dict(row: dict[str, Any]) -> dict[str, Any]:
@@ -1926,6 +2338,8 @@ async def lookup_product_with_web_search(jan: str, preferred_domain: str | None 
     image_url = str(parsed.get("imageUrl") or parsed.get("image_url") or "").strip() or None
     if not image_url:
         image_url = next((result["imageUrl"] for result in search_results if result.get("imageUrl")), None)
+    if not image_url and box_name:
+        image_url = await supabase_best_accepted_image_url(jan, box_name)
     if not image_url:
         image_url = await search_brave_image_for_product(box_name)
     try:
@@ -2000,6 +2414,13 @@ async def health() -> dict[str, Any]:
         "lineupVoteTable": SUPABASE_LINEUP_VOTE_TABLE,
         "lineupAcceptSelectedMin": LINEUP_ACCEPT_SELECTED_MIN,
         "lineupReportHideMin": LINEUP_REPORT_HIDE_MIN,
+        "sharedImageConfigured": supabase_configured(),
+        "imageTable": SUPABASE_IMAGE_TABLE,
+        "imageVoteTable": SUPABASE_IMAGE_VOTE_TABLE,
+        "imageBucket": SUPABASE_IMAGE_BUCKET,
+        "imageAcceptSignalMin": IMAGE_ACCEPT_SIGNAL_MIN,
+        "imageReportHideMin": IMAGE_REPORT_HIDE_MIN,
+        "imageMaxBytes": IMAGE_MAX_BYTES,
     }
 
 
@@ -2017,7 +2438,7 @@ async def lookup(
     has_preferred_cached_candidate = any(url_matches_domain(candidate.sourceUrl, preferred_domain) for candidate in cached_candidates)
     if cached_candidates and (not preferred_domain or has_preferred_cached_candidate):
         selected = cached_candidates[0]
-        selected_image_url = selected.imageUrl or await search_brave_image_for_product(selected.boxName)
+        selected_image_url = selected.imageUrl or await supabase_best_accepted_image_url(normalized_jan, selected.boxName) or await search_brave_image_for_product(selected.boxName)
         ai_result = await analyze_lineup_with_gemini(selected.boxName) if analyze else AnalyzeLineupResponse()
         shared_lineup = await supabase_fetch_shared_lineup(normalized_jan, selected.boxName)
         lineup = merge_lineup_items(ai_result.lineup, shared_lineup)
@@ -2055,6 +2476,7 @@ async def lookup(
 
     cached_candidates = await store_lookup_candidates(normalized_jan, candidates, preferred_domain=preferred_domain)
     product = cached_candidates[0] if cached_candidates else candidates[0]
+    product_image_url = product.imageUrl or await supabase_best_accepted_image_url(normalized_jan, product.boxName)
     ai_result = await analyze_lineup_with_gemini(product.boxName) if analyze else AnalyzeLineupResponse()
     shared_lineup = await supabase_fetch_shared_lineup(normalized_jan, product.boxName)
     lineup = merge_lineup_items(ai_result.lineup, shared_lineup)
@@ -2062,7 +2484,7 @@ async def lookup(
     return LookupResponse(
         janCode=normalized_jan,
         boxName=product.boxName,
-        imageUrl=product.imageUrl,
+        imageUrl=product_image_url,
         sourceLabel=product.sourceLabel,
         lineup=lineup,
         warnings=[*search_warnings, *ai_result.warnings],
@@ -2083,6 +2505,28 @@ async def lookup_candidate_feedback(jan: str, request: CandidateFeedbackRequest)
 @app.post("/lineup/feedback", response_model=list[LineupItem])
 async def lineup_feedback(request: LineupFeedbackRequest) -> list[LineupItem]:
     return await apply_lineup_feedback(request)
+
+
+@app.get("/images/candidates", response_model=list[ImageCandidate])
+async def image_candidates(
+    jan: str | None = Query(default=None, min_length=8, max_length=14),
+    boxName: str = Query(..., min_length=1, max_length=240),
+    imageKind: str = Query(default="parent", pattern="^(parent|variant)$"),
+    characterName: str = Query(default="", max_length=120),
+    variantName: str = Query(default="通常版", max_length=120),
+) -> list[ImageCandidate]:
+    normalized_jan = validate_jan(jan) if jan else None
+    return await supabase_fetch_image_candidates(normalized_jan, boxName, imageKind, characterName, variantName)
+
+
+@app.post("/images/candidates", response_model=ImageCandidate)
+async def upload_image_candidate(request: ImageCandidateUploadRequest) -> ImageCandidate:
+    return await supabase_store_image_candidate(request)
+
+
+@app.post("/images/candidates/{candidate_id}/feedback", response_model=list[ImageCandidate])
+async def image_candidate_feedback(candidate_id: str, request: ImageCandidateFeedbackRequest) -> list[ImageCandidate]:
+    return await supabase_apply_image_feedback(candidate_id, request)
 
 
 @app.get("/search", response_model=list[ProductCandidate])
