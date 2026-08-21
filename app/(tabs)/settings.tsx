@@ -218,7 +218,7 @@ export default function SettingsScreen() {
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>タブ編集</Text>
-          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・コレクション・登録は固定です。残り2つのタブを別ページで選択できます。</Text>
+          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・コレクション・登録・設定は固定です。追加で表示する1つのタブを別ページで選択できます。</Text>
           <Pressable onPress={() => router.push('/tab-editor')} style={[styles.editTabsButton, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
             <Ionicons color={colors.primary} name="options-outline" size={20} />
             <View style={styles.editTabsText}>
@@ -233,6 +233,12 @@ export default function SettingsScreen() {
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>データ管理</Text>
+          <View style={styles.toolGrid}>
+            <ToolButton icon="bar-chart-outline" label="統計" onPress={() => router.push('/stats')} />
+            <ToolButton icon="swap-horizontal-outline" label="交換リスト" onPress={() => router.push('/exchange-list')} />
+            <ToolButton icon="file-tray-full-outline" label="保管場所" onPress={() => router.push('/storage-locations')} />
+            <ToolButton icon="download-outline" label="バックアップ" onPress={() => router.push('/data-tools')} />
+          </View>
           <View style={styles.dataRow}>
             <Ionicons color={colors.muted} name="phone-portrait-outline" size={20} />
             <Text style={[styles.dataText, { color: colors.muted }]}>
@@ -242,6 +248,24 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function ToolButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <Pressable onPress={onPress} style={[styles.toolButton, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+      <Ionicons color={colors.primary} name={icon} size={21} />
+      <Text style={[styles.toolButtonText, { color: colors.text }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -310,6 +334,17 @@ const styles = StyleSheet.create({
   customBadge: { fontSize: 10, fontWeight: '800' },
   dataRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 10 },
   dataText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  toolGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  toolButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: '47%',
+    gap: 7,
+    height: 76,
+    justifyContent: 'center',
+  },
+  toolButtonText: { fontSize: 13, fontWeight: '900' },
   settingRow: {
     alignItems: 'center',
     borderRadius: 8,

@@ -7,6 +7,7 @@ type EventContextValue = {
   events: EventPlan[];
   selectedEventId: string;
   addEvent: (input: Omit<EventPlan, 'id'>) => Promise<string>;
+  replaceEvents: (nextEvents: EventPlan[], nextSelectedEventId?: string) => Promise<void>;
   updateEvent: (id: string, input: Omit<EventPlan, 'id'>) => Promise<void>;
   removeEvent: (id: string) => Promise<void>;
   setSelectedEventId: (id: string) => Promise<void>;
@@ -54,6 +55,27 @@ export function EventProvider({ children }: PropsWithChildren) {
     return event.id;
   };
 
+  const replaceEvents = async (nextEvents: EventPlan[], nextSelectedEventId = '') => {
+    const sanitizedEvents = nextEvents
+      .filter((event) => event && typeof event.id === 'string' && event.id.trim())
+      .map((event) => ({
+        id: event.id.trim(),
+        name: event.name?.trim() || 'イベント未設定',
+        date: event.date?.trim() || '',
+        venue: event.venue?.trim() || '',
+        memo: event.memo?.trim() || '',
+      }));
+    const selectedId = sanitizedEvents.some((event) => event.id === nextSelectedEventId)
+      ? nextSelectedEventId
+      : sanitizedEvents[0]?.id ?? '';
+    setEvents(sanitizedEvents);
+    setSelectedEventIdState(selectedId);
+    await AsyncStorage.multiSet([
+      [STORAGE_KEY, JSON.stringify(sanitizedEvents)],
+      [SELECTED_KEY, selectedId],
+    ]);
+  };
+
   const updateEvent = async (id: string, input: Omit<EventPlan, 'id'>) => {
     await persistEvents(events.map((event) => (event.id === id ? { ...input, id } : event)));
   };
@@ -75,7 +97,7 @@ export function EventProvider({ children }: PropsWithChildren) {
 
   const selectedEventId = selectedEventIdState || events[0]?.id || '';
   const value = useMemo(
-    () => ({ events, selectedEventId, addEvent, updateEvent, removeEvent, setSelectedEventId }),
+    () => ({ events, selectedEventId, addEvent, replaceEvents, updateEvent, removeEvent, setSelectedEventId }),
     [events, selectedEventId],
   );
 

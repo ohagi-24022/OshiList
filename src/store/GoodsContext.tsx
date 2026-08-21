@@ -8,6 +8,7 @@ type GoodsContextValue = {
   goods: Goods[];
   loading: boolean;
   addGoods: (input: GoodsInput) => Promise<void>;
+  replaceGoods: (inputs: GoodsInput[]) => Promise<void>;
   updateGoods: (id: number, input: GoodsInput) => Promise<void>;
   bulkUpdateGoods: (ids: number[], patch: Partial<Pick<GoodsInput, 'seriesName' | 'characterName' | 'storageLocation'>>) => Promise<void>;
   updateQuantity: (id: number, delta: number) => Promise<void>;
@@ -278,6 +279,47 @@ export function GoodsProvider({ children }: PropsWithChildren) {
     [refresh],
   );
 
+  const replaceGoods = useCallback(
+    async (inputs: GoodsInput[]) => {
+      await db.runAsync('DELETE FROM goods');
+      for (const input of inputs) {
+        const normalized = normalizedGoodsInput(input);
+        await db.runAsync(
+          `INSERT INTO goods (
+             jan_code, box_name, series_name, character_name, variant_name, quantity, image_url, is_random, status,
+             target_quantity, keep_quantity, in_use_quantity, exchange_quantity, storage_location, usage_location,
+             collection_goal, release_date, reservation_deadline, pickup_date, tags, favorite, event_id, updated_at
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+          normalized.janCode,
+          normalized.boxName,
+          normalized.seriesName,
+          normalized.characterName,
+          normalized.variantName,
+          normalized.quantity,
+          normalized.imageUrl,
+          normalized.isRandom ? 1 : 0,
+          normalized.status,
+          normalized.targetQuantity,
+          normalized.keepQuantity,
+          normalized.inUseQuantity,
+          normalized.exchangeQuantity,
+          normalized.storageLocation,
+          normalized.usageLocation,
+          normalized.collectionGoal,
+          normalized.releaseDate,
+          normalized.reservationDeadline,
+          normalized.pickupDate,
+          normalized.tags,
+          normalized.favorite ? 1 : 0,
+          normalized.eventId,
+        );
+      }
+      await refresh();
+    },
+    [refresh],
+  );
+
   const updateGoods = useCallback(
     async (id: number, input: GoodsInput) => {
       const previous = await db.getFirstAsync<{ image_url: string | null }>('SELECT image_url FROM goods WHERE id = ?', id);
@@ -384,8 +426,8 @@ export function GoodsProvider({ children }: PropsWithChildren) {
   );
 
   const value = useMemo(
-    () => ({ goods, loading, addGoods, updateGoods, bulkUpdateGoods, updateQuantity, removeGoods, refresh }),
-    [addGoods, bulkUpdateGoods, goods, loading, refresh, removeGoods, updateGoods, updateQuantity],
+    () => ({ goods, loading, addGoods, replaceGoods, updateGoods, bulkUpdateGoods, updateQuantity, removeGoods, refresh }),
+    [addGoods, bulkUpdateGoods, goods, loading, refresh, removeGoods, replaceGoods, updateGoods, updateQuantity],
   );
 
   return <GoodsContext.Provider value={value}>{children}</GoodsContext.Provider>;

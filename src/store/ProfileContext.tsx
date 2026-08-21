@@ -17,6 +17,7 @@ type ProfileContextValue = {
   activeProfileId: string;
   updateProfile: (patch: Partial<OshiProfile>) => Promise<void>;
   addProfilePreset: (input: Partial<OshiProfile>) => Promise<void>;
+  replaceProfiles: (nextProfiles: OshiProfile[], nextActiveProfileId?: string) => Promise<void>;
   selectProfile: (id: string) => Promise<void>;
   removeProfile: (id: string) => Promise<void>;
 };
@@ -101,6 +102,15 @@ export function ProfileProvider({ children }: PropsWithChildren) {
     await AsyncStorage.setItem(PROFILE_STORAGE_KEY, serializeProfileState(nextProfile.id, nextProfiles));
   };
 
+  const replaceProfiles = async (nextProfiles: OshiProfile[], nextActiveProfileId = '') => {
+    const sanitizedProfiles = nextProfiles.map((item, index) => normalizeProfile(item, item.id || `oshi-${Date.now()}-${index}`));
+    const profilesToSave = sanitizedProfiles.length ? sanitizedProfiles : [defaultProfile];
+    const activeId = profilesToSave.some((item) => item.id === nextActiveProfileId) ? nextActiveProfileId : profilesToSave[0].id;
+    setProfiles(profilesToSave);
+    setActiveProfileId(activeId);
+    await AsyncStorage.setItem(PROFILE_STORAGE_KEY, serializeProfileState(activeId, profilesToSave));
+  };
+
   const selectProfile = async (id: string) => {
     if (!profiles.some((item) => item.id === id)) return;
     setActiveProfileId(id);
@@ -117,7 +127,7 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   };
 
   const value = useMemo(
-    () => ({ profile, profiles, activeProfileId, updateProfile, addProfilePreset, selectProfile, removeProfile }),
+    () => ({ profile, profiles, activeProfileId, updateProfile, addProfilePreset, replaceProfiles, selectProfile, removeProfile }),
     [activeProfileId, profile, profiles],
   );
 
