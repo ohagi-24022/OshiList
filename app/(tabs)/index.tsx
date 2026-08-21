@@ -143,26 +143,35 @@ export default function HomeScreen() {
         );
       case 'quickActions':
         return (
-          <View style={styles.quickGrid}>
-            <QuickAction
-              icon="shield-checkmark-outline"
-              label="買う前"
-              text="JANで所持・予約を確認"
+          <>
+            <Pressable
               onPress={() => router.push('/(tabs)/scan?mode=check')}
-            />
-            <QuickAction
-              icon="albums-outline"
-              label="コレクション"
-              text="所持グッズを見る"
-              onPress={() => router.push('/(tabs)/collection?mode=collection')}
-            />
-            <QuickAction
-              icon="person-circle-outline"
-              label="マイページ"
-              text="推し設定を編集"
-              onPress={() => router.push('/mypage')}
-            />
-          </View>
+              style={[styles.checkAction, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <View style={[styles.checkActionIcon, { backgroundColor: colors.primary }]}>
+                <Ionicons color="#ffffff" name="shield-checkmark-outline" size={22} />
+              </View>
+              <View style={styles.checkActionText}>
+                <Text style={[styles.checkActionTitle, { color: colors.text }]}>買う前チェック</Text>
+                <Text style={[styles.checkActionBody, { color: colors.muted }]}>JANで所持・予約・交換可能数を確認</Text>
+              </View>
+              <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+            </Pressable>
+            <View style={styles.quickGrid}>
+              <QuickAction
+                icon="albums-outline"
+                label="コレクション"
+                text="所持グッズを見る"
+                onPress={() => router.push('/(tabs)/collection?mode=collection')}
+              />
+              <QuickAction
+                icon="person-circle-outline"
+                label="マイページ"
+                text="推し設定を編集"
+                onPress={() => router.push('/mypage')}
+              />
+            </View>
+          </>
         );
       case 'exchange':
         return settings.exchangeEnabled && exchangeGoods.length ? (
@@ -430,8 +439,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   cleanText: { fontSize: 14, fontWeight: '900' },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
-  quickAction: { borderRadius: 8, borderWidth: 1, flexBasis: '31%', flexGrow: 1, minHeight: 92, padding: 13 },
+  checkAction: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 14,
+    minHeight: 70,
+    padding: 13,
+  },
+  checkActionIcon: { alignItems: 'center', borderRadius: 999, height: 42, justifyContent: 'center', width: 42 },
+  checkActionText: { flex: 1, minWidth: 0 },
+  checkActionTitle: { fontSize: 16, fontWeight: '900' },
+  checkActionBody: { fontSize: 12, fontWeight: '800', lineHeight: 17, marginTop: 2 },
+  quickGrid: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  quickAction: { borderRadius: 8, borderWidth: 1, flex: 1, minHeight: 92, padding: 13 },
   quickLabel: { fontSize: 15, fontWeight: '900', marginTop: 10 },
   quickText: { fontSize: 11, fontWeight: '800', marginTop: 4 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },

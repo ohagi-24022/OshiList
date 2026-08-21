@@ -311,7 +311,7 @@ export default function ScanScreen() {
             </Pressable>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.segment, { backgroundColor: colors.input }]}>
+          <View style={[styles.segment, { backgroundColor: colors.input }]}>
             {visibleModes.map((value) => {
               const active = mode === value;
               return (
@@ -357,7 +357,7 @@ export default function ScanScreen() {
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </View>
 
           {mode === 'barcode' ? (
             <>
@@ -1424,13 +1424,15 @@ const styles = StyleSheet.create({
   segmentButton: {
     alignItems: 'center',
     borderRadius: 7,
+    flex: 1,
     flexDirection: 'row',
     gap: 7,
     height: 38,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    minWidth: 0,
+    paddingHorizontal: 4,
   },
-  segmentText: { fontSize: 12, fontWeight: '900' },
+  segmentText: { flexShrink: 1, fontSize: 12, fontWeight: '900' },
   notice: {
     alignItems: 'flex-start',
     borderRadius: 8,
