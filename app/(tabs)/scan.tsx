@@ -26,10 +26,12 @@ import { useTabReset } from '../../src/hooks/useTabReset';
 import { persistPickedImage, requestPhotoCameraPermission, requestPhotoLibraryPermission } from '../../src/lib/localImage';
 import { inferGoodsFromPhoto, lookupProductByJan, parseReceiptImage, sendLineupFeedback, sendLookupCandidateFeedback } from '../../src/lib/productLookup';
 import { goodsStatusLabels } from '../../src/lib/goodsStatus';
+import { isOshiGoods } from '../../src/lib/oshi';
 import { inferIsRandomGoods } from '../../src/lib/randomGoods';
 import { useEvents } from '../../src/store/EventContext';
 import { useGoods } from '../../src/store/GoodsContext';
 import { MyStore, useMyStores } from '../../src/store/MyStoreContext';
+import { useProfile } from '../../src/store/ProfileContext';
 import { useAppTheme } from '../../src/store/ThemeContext';
 import { Goods, PhotoInferResult, ProductLookupResult, ReceiptParseResult } from '../../src/types';
 
@@ -49,6 +51,7 @@ export default function ScanScreen() {
   const { addGoods, goods } = useGoods();
   const { events, selectedEventId, setSelectedEventId } = useEvents();
   const { selectedStore, selectedStoreId, selectStore, stores } = useMyStores();
+  const { profile } = useProfile();
   const params = useLocalSearchParams<{ mode?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const isFocused = useIsFocused();
@@ -68,6 +71,7 @@ export default function ScanScreen() {
   const [checkJan, setCheckJan] = useState('');
   const [checkResult, setCheckResult] = useState<Goods[]>([]);
   const scanLockRef = useRef(false);
+  const checkLockRef = useRef(false);
   const lastScannedJanRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -148,10 +152,51 @@ export default function ScanScreen() {
 
   const checkBeforeBuy = (janCode: string) => {
     const normalizedJan = janCode.trim();
-    if (!normalizedJan) return;
+    if (!normalizedJan || checkLockRef.current) return;
+    checkLockRef.current = true;
     setCheckJan(normalizedJan);
     setCheckResult(goods.filter((item) => item.janCode === normalizedJan));
+    setTimeout(() => {
+      checkLockRef.current = false;
+    }, 1200);
   };
+
+  const checkSummary = useMemo(() => {
+    const janGroup = checkJan.trim() ? goods.filter((item) => item.janCode === checkJan.trim()) : checkResult;
+    const collectionItems = janGroup.filter((item) => item.status === 'owned' || item.status === 'unorganized');
+    const ownedQuantity = collectionItems.reduce((sum, item) => sum + item.quantity, 0);
+    const oshiItems = collectionItems.filter((item) => isOshiGoods(item, profile));
+    const exchangeQuantity = collectionItems.reduce((sum, item) => sum + item.exchangeQuantity, 0);
+    const reservedQuantity = janGroup
+      .filter((item) => item.status === 'reserved' || item.status === 'ordered' || item.status === 'shipped')
+      .reduce((sum, item) => sum + item.quantity, 0);
+    const wantedQuantity = janGroup.filter((item) => item.status === 'wanted').reduce((sum, item) => sum + item.quantity, 0);
+    const targetQuantity = Math.max(...collectionItems.map((item) => item.targetQuantity), 0);
+    const neededQuantity = targetQuantity > 0 ? Math.max(targetQuantity - ownedQuantity, 0) : 0;
+    const randomItems = janGroup.filter((item) => item.isRandom);
+    const variantKeys = new Set(randomItems.map((item) => `${item.characterName}::${item.variantName}`));
+    const ownedVariantKeys = new Set(
+      randomItems
+        .filter((item) => (item.status === 'owned' || item.status === 'unorganized') && item.quantity > 0)
+        .map((item) => `${item.characterName}::${item.variantName}`),
+    );
+    const randomOshiOwned = randomItems.some((item) => (item.status === 'owned' || item.status === 'unorganized') && item.quantity > 0 && isOshiGoods(item, profile));
+
+    return {
+      exchangeQuantity,
+      isRegistered: janGroup.length > 0,
+      isRandom: randomItems.length > 0,
+      neededQuantity,
+      oshiKindCount: new Set(oshiItems.map((item) => `${item.characterName}::${item.variantName}`)).size,
+      ownedQuantity,
+      ownedVariantCount: ownedVariantKeys.size,
+      randomOshiOwned,
+      reservedQuantity,
+      targetQuantity,
+      totalVariantCount: variantKeys.size,
+      wantedQuantity,
+    };
+  }, [checkJan, checkResult, goods, profile]);
 
   const readReceiptImage = async (source: ReceiptSource) => {
     setReceiptStatus(source === 'camera' ? 'カメラを起動中...' : '写真ライブラリを開いています...');
@@ -451,25 +496,7 @@ export default function ScanScreen() {
                 </Pressable>
               </View>
               {checkJan ? (
-                <View style={[styles.checkResultBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
-                  <Text style={[styles.checkResultTitle, { color: colors.text }]}>
-                    {checkResult.length ? `登録済み ${checkResult.length}件` : '未所持'}
-                  </Text>
-                  {checkResult.length ? (
-                    checkResult.map((item) => (
-                      <View key={`check-${item.id}`} style={styles.checkResultRow}>
-                        <Text numberOfLines={1} style={[styles.checkResultName, { color: colors.text }]}>
-                          {item.characterName} / {item.variantName}
-                        </Text>
-                        <Text style={[styles.checkResultMeta, { color: colors.muted }]}>
-                          {goodsStatusLabels[item.status]} / {item.quantity}個
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={[styles.receiptText, { color: colors.muted }]}>このJANはローカル登録に見つかりませんでした。</Text>
-                  )}
-                </View>
+                <PurchaseCheckResult items={checkResult} janCode={checkJan} summary={checkSummary} />
               ) : null}
             </View>
           ) : mode === 'event' ? (
@@ -1266,6 +1293,115 @@ function ProductPreview({ result }: { result: ProductLookupResult }) {
   );
 }
 
+function PurchaseCheckResult({
+  items,
+  janCode,
+  summary,
+}: {
+  items: Goods[];
+  janCode: string;
+  summary: {
+    exchangeQuantity: number;
+    isRegistered: boolean;
+    isRandom: boolean;
+    neededQuantity: number;
+    oshiKindCount: number;
+    ownedQuantity: number;
+    ownedVariantCount: number;
+    randomOshiOwned: boolean;
+    reservedQuantity: number;
+    targetQuantity: number;
+    totalVariantCount: number;
+    wantedQuantity: number;
+  };
+}) {
+  const { colors } = useAppTheme();
+  const targetText = summary.targetQuantity > 0 ? `${summary.targetQuantity}個` : '未設定';
+  const neededText = summary.targetQuantity > 0 ? `${summary.neededQuantity}個` : '-';
+  const randomRate = summary.totalVariantCount > 0 ? Math.round((summary.ownedVariantCount / summary.totalVariantCount) * 100) : 0;
+
+  return (
+    <View style={[styles.checkResultBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+      <View style={styles.checkHeroRow}>
+        <View style={[styles.checkHeroIcon, { backgroundColor: summary.isRegistered ? colors.primary : colors.elevated }]}>
+          <Ionicons color={summary.isRegistered ? '#ffffff' : colors.muted} name={summary.isRegistered ? 'checkmark-circle' : 'help-circle-outline'} size={24} />
+        </View>
+        <View style={styles.checkHeroText}>
+          <Text style={[styles.checkResultTitle, { color: colors.text }]}>
+            {summary.isRegistered ? 'この商品は登録済みです' : 'このJANは未登録です'}
+          </Text>
+          <Text style={[styles.checkJanText, { color: colors.muted }]}>JAN {janCode}</Text>
+        </View>
+      </View>
+
+      <View style={styles.checkMetricGrid}>
+        <CheckMetric label="所持" value={`${summary.ownedQuantity}個`} />
+        <CheckMetric label="推し" value={`${summary.oshiKindCount}種`} />
+        <CheckMetric label="交換可能" value={`${summary.exchangeQuantity}個`} />
+        <CheckMetric label="予約済み" value={`${summary.reservedQuantity}個`} />
+        <CheckMetric label="欲しい" value={`${summary.wantedQuantity}個`} />
+        <CheckMetric label="目標" value={targetText} />
+        <CheckMetric label="あと必要" value={neededText} strong={summary.neededQuantity > 0} />
+      </View>
+
+      {summary.isRandom ? (
+        <View style={[styles.randomCheckBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.randomCheckHeader}>
+            <View>
+              <Text style={[styles.randomCheckTitle, { color: colors.text }]}>ランダムグッズ</Text>
+              <Text style={[styles.randomCheckMeta, { color: colors.muted }]}>全{summary.totalVariantCount}種</Text>
+            </View>
+            <Text style={[styles.randomCheckRate, { color: colors.primary }]}>{randomRate}%</Text>
+          </View>
+          <View style={[styles.randomProgressTrack, { backgroundColor: colors.input }]}>
+            <View style={[styles.randomProgressFill, { backgroundColor: colors.primary, width: `${randomRate}%` as `${number}%` }]} />
+          </View>
+          <View style={styles.randomCheckStats}>
+            <CheckMetric label="所持" value={`${summary.ownedVariantCount} / ${summary.totalVariantCount}`} />
+            <CheckMetric label="未所持" value={`${Math.max(summary.totalVariantCount - summary.ownedVariantCount, 0)}`} />
+            <CheckMetric label="推し" value={summary.randomOshiOwned ? '所持済み' : '未所持'} strong={!summary.randomOshiOwned} />
+          </View>
+        </View>
+      ) : null}
+
+      {items.length ? (
+        <View style={styles.checkDetailList}>
+          {items.slice(0, 5).map((item) => (
+            <View key={`check-${item.id}`} style={[styles.checkResultRow, { borderTopColor: colors.border }]}>
+              <View style={styles.checkResultText}>
+                <Text numberOfLines={1} style={[styles.checkResultName, { color: colors.text }]}>
+                  {item.characterName} / {item.variantName}
+                </Text>
+                <Text style={[styles.checkResultMeta, { color: colors.muted }]}>
+                  {goodsStatusLabels[item.status]} / {item.quantity}個
+                </Text>
+              </View>
+              {item.exchangeQuantity > 0 ? (
+                <View style={[styles.checkSmallBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.checkSmallBadgeText}>譲 {item.exchangeQuantity}</Text>
+                </View>
+              ) : null}
+            </View>
+          ))}
+          {items.length > 5 ? <Text style={[styles.checkMoreText, { color: colors.muted }]}>ほか {items.length - 5}件</Text> : null}
+        </View>
+      ) : (
+        <Text style={[styles.receiptText, { color: colors.muted }]}>購入後に登録する場合は、バーコード登録または手動登録へ進んでください。</Text>
+      )}
+    </View>
+  );
+}
+
+function CheckMetric({ label, strong = false, value }: { label: string; strong?: boolean; value: string }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={[styles.checkMetric, { backgroundColor: strong ? colors.surface : colors.elevated, borderColor: strong ? colors.primary : colors.border }]}>
+      <Text style={[styles.checkMetricValue, { color: strong ? colors.primary : colors.text }]}>{value}</Text>
+      <Text style={[styles.checkMetricLabel, { color: colors.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
@@ -1382,11 +1518,32 @@ const styles = StyleSheet.create({
   checkCameraBox: { borderRadius: 8, borderWidth: 1, height: 150, marginTop: 14, overflow: 'hidden', width: '100%' },
   checkCamera: { flex: 1 },
   checkFallback: { alignItems: 'center', flex: 1, justifyContent: 'center' },
-  checkResultBox: { borderRadius: 8, borderWidth: 1, gap: 8, marginTop: 12, padding: 12, width: '100%' },
+  checkResultBox: { borderRadius: 8, borderWidth: 1, gap: 12, marginTop: 12, padding: 12, width: '100%' },
+  checkHeroRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  checkHeroIcon: { alignItems: 'center', borderRadius: 999, height: 44, justifyContent: 'center', width: 44 },
+  checkHeroText: { flex: 1, minWidth: 0 },
   checkResultTitle: { fontSize: 18, fontWeight: '900' },
-  checkResultRow: { gap: 2 },
+  checkJanText: { fontSize: 11, fontWeight: '800', marginTop: 3 },
+  checkMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  checkMetric: { borderRadius: 8, borderWidth: 1, flexBasis: '30.5%', flexGrow: 1, minHeight: 62, padding: 9 },
+  checkMetricValue: { fontSize: 16, fontWeight: '900' },
+  checkMetricLabel: { fontSize: 10, fontWeight: '800', marginTop: 2 },
+  randomCheckBox: { borderRadius: 8, borderWidth: 1, padding: 12 },
+  randomCheckHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
+  randomCheckTitle: { fontSize: 15, fontWeight: '900' },
+  randomCheckMeta: { fontSize: 11, fontWeight: '800', marginTop: 2 },
+  randomCheckRate: { fontSize: 24, fontWeight: '900' },
+  randomProgressTrack: { borderRadius: 999, height: 8, marginTop: 10, overflow: 'hidden' },
+  randomProgressFill: { borderRadius: 999, height: '100%' },
+  randomCheckStats: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  checkDetailList: { gap: 0 },
+  checkResultRow: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingVertical: 9 },
+  checkResultText: { flex: 1, minWidth: 0 },
   checkResultName: { fontSize: 14, fontWeight: '900' },
   checkResultMeta: { fontSize: 12, fontWeight: '800' },
+  checkSmallBadge: { alignItems: 'center', borderRadius: 999, minHeight: 26, justifyContent: 'center', paddingHorizontal: 8 },
+  checkSmallBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
+  checkMoreText: { fontSize: 11, fontWeight: '800', paddingTop: 8, textAlign: 'center' },
   quickList: { gap: 8, marginTop: 14, width: '100%' },
   quickRow: {
     alignItems: 'center',

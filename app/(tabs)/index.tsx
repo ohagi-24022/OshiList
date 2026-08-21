@@ -145,6 +145,12 @@ export default function HomeScreen() {
         return (
           <View style={styles.quickGrid}>
             <QuickAction
+              icon="shield-checkmark-outline"
+              label="買う前"
+              text="JANで所持・予約を確認"
+              onPress={() => router.push('/(tabs)/scan?mode=check')}
+            />
+            <QuickAction
               icon="albums-outline"
               label="コレクション"
               text="所持グッズを見る"
@@ -424,8 +430,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   cleanText: { fontSize: 14, fontWeight: '900' },
-  quickGrid: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  quickAction: { borderRadius: 8, borderWidth: 1, flex: 1, minHeight: 92, padding: 13 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
+  quickAction: { borderRadius: 8, borderWidth: 1, flexBasis: '31%', flexGrow: 1, minHeight: 92, padding: 13 },
   quickLabel: { fontSize: 15, fontWeight: '900', marginTop: 10 },
   quickText: { fontSize: 11, fontWeight: '800', marginTop: 4 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
