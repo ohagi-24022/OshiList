@@ -35,7 +35,6 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="collection"
         options={{
-          href: visibleTabs.has('collection') ? undefined : null,
           title: 'コレクション',
           tabBarIcon: ({ color, size }) => <Ionicons color={color} name="albums-outline" size={size} />,
         }}
@@ -98,6 +97,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="settings"
         options={{
+          href: null,
           title: '設定',
           tabBarIcon: ({ color, size }) => <Ionicons color={color} name="color-palette-outline" size={size} />,
         }}

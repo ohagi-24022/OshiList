@@ -10,10 +10,8 @@ import { useAppSettings } from '../../src/store/AppSettingsContext';
 import { ThemePreset, useAppTheme } from '../../src/store/ThemeContext';
 
 const utilityTabLabels: Record<string, string> = {
-  calendar: 'カレンダー',
   collection: 'コレクション',
   event: 'イベント',
-  manage: '管理',
   mypage: 'マイページ',
   random: 'ランダム開封',
   schedule: '予定',
@@ -152,6 +150,20 @@ export default function SettingsScreen() {
           <Ionicons color={colors.muted} name="chevron-forward" size={18} />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/home-editor')}
+          style={[styles.helpButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <View style={[styles.helpIcon, { backgroundColor: colors.elevated }]}>
+            <Ionicons color={colors.primary} name="grid-outline" size={23} />
+          </View>
+          <View style={styles.helpText}>
+            <Text style={[styles.helpTitle, { color: colors.text }]}>ホーム編集</Text>
+            <Text style={[styles.helpBody, { color: colors.muted }]}>ホームカードの表示・非表示と並び順を変更できます。</Text>
+          </View>
+          <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+        </Pressable>
+
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>交換管理</Text>
           <Pressable
@@ -206,7 +218,7 @@ export default function SettingsScreen() {
 
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.text }]}>タブ編集</Text>
-          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・登録・設定は固定です。残り2つのタブを別ページで選択できます。</Text>
+          <Text style={[styles.panelHelp, { color: colors.muted }]}>ホーム・コレクション・登録は固定です。残り2つのタブを別ページで選択できます。</Text>
           <Pressable onPress={() => router.push('/tab-editor')} style={[styles.editTabsButton, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
             <Ionicons color={colors.primary} name="options-outline" size={20} />
             <View style={styles.editTabsText}>

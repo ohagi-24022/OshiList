@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -148,8 +149,20 @@ export default function MyPageScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View>
-          <Text style={[styles.title, { color: colors.text }]}>マイページ</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>推しプロフィール、画像、推しマークを設定できます。</Text>
+          <View style={styles.titleRow}>
+            <View style={styles.titleText}>
+              <Text style={[styles.title, { color: colors.text }]}>マイページ</Text>
+              <Text style={[styles.subtitle, { color: colors.muted }]}>推しプロフィール、画像、推しマークを設定できます。</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="設定を開く"
+              onPress={() => router.push('/(tabs)/settings')}
+              style={[styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Ionicons color={colors.primary} name="settings-outline" size={22} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -340,6 +353,9 @@ export default function MyPageScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { gap: 14, padding: 18, paddingBottom: 96 },
+  titleRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  titleText: { flex: 1 },
+  settingsButton: { alignItems: 'center', borderRadius: 999, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
   title: { fontSize: 26, fontWeight: '900', letterSpacing: 0 },
   subtitle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   hero: {

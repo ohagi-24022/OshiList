@@ -7,13 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSettings } from '../src/store/AppSettingsContext';
 import { useAppTheme } from '../src/store/ThemeContext';
 
-type UtilityTabId = 'collection' | 'schedule' | 'calendar' | 'manage' | 'mypage' | 'event' | 'random';
+type UtilityTabId = 'schedule' | 'mypage' | 'event' | 'random';
 
 const tabOptions = [
-  { id: 'collection', label: 'コレクション', icon: 'albums-outline' },
   { id: 'schedule', label: '予定', icon: 'calendar-outline' },
-  { id: 'calendar', label: 'カレンダー', icon: 'calendar-number-outline' },
-  { id: 'manage', label: '管理', icon: 'create-outline' },
   { id: 'mypage', label: 'マイページ', icon: 'person-circle-outline' },
   { id: 'event', label: 'イベント', icon: 'sparkles-outline' },
   { id: 'random', label: 'ランダム開封', icon: 'cube-outline' },
@@ -36,7 +33,7 @@ export default function TabEditorScreen() {
 
   const save = async () => {
     if (draftTabs.length !== 2) {
-      Alert.alert('タブを2つ選択してください', 'ホーム・登録・設定以外に表示するタブを2つ選んでください。');
+      Alert.alert('タブを2つ選択してください', 'ホーム・コレクション・登録以外に表示するタブを2つ選んでください。');
       return;
     }
     await updateSettings({ utilityTabs: draftTabs });
@@ -57,7 +54,7 @@ export default function TabEditorScreen() {
         <View>
           <Text style={[styles.title, { color: colors.text }]}>表示するタブを2つ選択</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>
-            ホーム・登録・設定は固定です。選択中のタブをもう一度押すと解除できます。
+            ホーム・コレクション・登録は固定です。設定はマイページから開けます。
           </Text>
         </View>
 
@@ -80,7 +77,7 @@ export default function TabEditorScreen() {
 
         <View style={[styles.fixedBox, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
           <Text style={[styles.fixedTitle, { color: colors.text }]}>固定タブ</Text>
-          <Text style={[styles.fixedText, { color: colors.muted }]}>ホーム / 登録 / 設定</Text>
+          <Text style={[styles.fixedText, { color: colors.muted }]}>ホーム / コレクション / 登録</Text>
         </View>
       </ScrollView>
 

@@ -66,51 +66,36 @@ export default function HomeScreen() {
   const lineupRate = lineupProgress ? Math.round((lineupProgress.owned.size / lineupProgress.total.size) * 100) : 0;
   useTabReset(scrollRef);
 
-  return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: colors.text }]}>ホーム</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>
-              {loading ? '読み込み中' : `${collectionGoods.length}種類 / ${totalQuantity}個を所持`}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="マイページを開く"
-            onPress={() => router.push('/mypage')}
-            style={[styles.profileButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Ionicons color={colors.primary} name="person-circle-outline" size={24} />
-          </Pressable>
-        </View>
-
-        <View style={[styles.oshiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[styles.oshiImageWrap, { backgroundColor: colors.elevated }]}>
-            {profile.imageUrl ? (
-              <Image source={{ uri: profile.imageUrl }} style={styles.oshiImage} />
-            ) : (
-              <Ionicons color={colors.muted} name="sparkles-outline" size={34} />
-            )}
-          </View>
-          <View style={styles.oshiBody}>
-            <Text style={[styles.cardLabel, { color: colors.muted }]}>推し</Text>
-            <Text numberOfLines={1} style={[styles.oshiName, { color: colors.text }]}>
-              {profile.oshiName.trim() || '推し未設定'}
-            </Text>
-            <Text numberOfLines={1} style={[styles.oshiMeta, { color: colors.muted }]}>
-              {profile.seriesName.trim() || 'シリーズ未設定'}
-            </Text>
-            <View style={styles.statRow}>
-              <MiniStat label="推しグッズ" value={`${oshiGoods.length}種類`} />
-              <MiniStat label="合計" value={`${oshiQuantity}個`} />
-              <MiniStat label="推し" value={`${profiles.length}人`} />
+  const renderHomeCard = (cardId: string) => {
+    switch (cardId) {
+      case 'oshi':
+        return (
+          <View style={[styles.oshiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.oshiImageWrap, { backgroundColor: colors.elevated }]}>
+              {profile.imageUrl ? (
+                <Image source={{ uri: profile.imageUrl }} style={styles.oshiImage} />
+              ) : (
+                <Ionicons color={colors.muted} name="sparkles-outline" size={34} />
+              )}
+            </View>
+            <View style={styles.oshiBody}>
+              <Text style={[styles.cardLabel, { color: colors.muted }]}>推し</Text>
+              <Text numberOfLines={1} style={[styles.oshiName, { color: colors.text }]}>
+                {profile.oshiName.trim() || '推し未設定'}
+              </Text>
+              <Text numberOfLines={1} style={[styles.oshiMeta, { color: colors.muted }]}>
+                {profile.seriesName.trim() || 'シリーズ未設定'}
+              </Text>
+              <View style={styles.statRow}>
+                <MiniStat label="推しグッズ" value={`${oshiGoods.length}種類`} />
+                <MiniStat label="合計" value={`${oshiQuantity}個`} />
+                <MiniStat label="推し" value={`${profiles.length}人`} />
+              </View>
             </View>
           </View>
-        </View>
-
-        {lineupProgress ? (
+        );
+      case 'lineup':
+        return lineupProgress ? (
           <View style={[styles.progressCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.progressHeader}>
               <View>
@@ -133,9 +118,9 @@ export default function HomeScreen() {
               <MiniStat label="未所持" value={`${Math.max(lineupProgress.total.size - lineupProgress.owned.size, 0)}種`} />
             </View>
           </View>
-        ) : null}
-
-        {unorganizedGoods.length ? (
+        ) : null;
+      case 'unorganized':
+        return unorganizedGoods.length ? (
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/(tabs)/collection?mode=manage&filter=unorganized')}
@@ -155,24 +140,26 @@ export default function HomeScreen() {
             <Ionicons color={colors.primary} name="checkmark-circle-outline" size={22} />
             <Text style={[styles.cleanText, { color: colors.text }]}>未整理のグッズはありません</Text>
           </View>
-        )}
-
-        <View style={styles.quickGrid}>
-          <QuickAction
-            icon="albums-outline"
-            label="コレクション"
-            text="所持グッズを見る"
-            onPress={() => router.push('/(tabs)/collection?mode=collection')}
-          />
-          <QuickAction
-            icon="person-circle-outline"
-            label="マイページ"
-            text="推し設定を編集"
-            onPress={() => router.push('/mypage')}
-          />
-        </View>
-
-        {settings.exchangeEnabled && exchangeGoods.length ? (
+        );
+      case 'quickActions':
+        return (
+          <View style={styles.quickGrid}>
+            <QuickAction
+              icon="albums-outline"
+              label="コレクション"
+              text="所持グッズを見る"
+              onPress={() => router.push('/(tabs)/collection?mode=collection')}
+            />
+            <QuickAction
+              icon="person-circle-outline"
+              label="マイページ"
+              text="推し設定を編集"
+              onPress={() => router.push('/mypage')}
+            />
+          </View>
+        );
+      case 'exchange':
+        return settings.exchangeEnabled && exchangeGoods.length ? (
           <>
             <SectionHeader
               title="交換可能グッズ"
@@ -191,9 +178,9 @@ export default function HomeScreen() {
               ))}
             </View>
           </>
-        ) : null}
-
-        {reservationGoods.length ? (
+        ) : null;
+      case 'schedule':
+        return reservationGoods.length ? (
           <>
             <SectionHeader title="予約・到着待ち" actionLabel="予定へ" onPress={() => router.push('/(tabs)/schedule')} />
             <View style={styles.statusList}>
@@ -210,9 +197,9 @@ export default function HomeScreen() {
               ))}
             </View>
           </>
-        ) : null}
-
-        {favoriteGoods.length ? (
+        ) : null;
+      case 'favorites':
+        return favoriteGoods.length ? (
           <>
             <SectionHeader title="お気に入り" actionLabel="コレクションへ" onPress={() => router.push('/(tabs)/collection?mode=collection')} />
             <View style={styles.tileGrid}>
@@ -223,41 +210,78 @@ export default function HomeScreen() {
               ))}
             </View>
           </>
-        ) : null}
-
-        <SectionHeader
-          title="推しのグッズ"
-          actionLabel="コレクションへ"
-          onPress={() => router.push('/(tabs)/collection?mode=collection')}
-        />
-        {oshiGoods.length ? (
-          <View style={styles.tileGrid}>
-            {oshiGoods.slice(0, 4).map((item) => (
-              <View key={item.id} style={styles.tileItem}>
-                <HomeGoodsTile item={item} />
+        ) : null;
+      case 'oshiGoods':
+        return (
+          <>
+            <SectionHeader
+              title="推しのグッズ"
+              actionLabel="コレクションへ"
+              onPress={() => router.push('/(tabs)/collection?mode=collection')}
+            />
+            {oshiGoods.length ? (
+              <View style={styles.tileGrid}>
+                {oshiGoods.slice(0, 4).map((item) => (
+                  <View key={item.id} style={styles.tileItem}>
+                    <HomeGoodsTile item={item} />
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        ) : (
-          <EmptyPanel icon="heart-outline" text="推し設定をすると、ここに推しのグッズが表示されます" />
-        )}
-
-        <SectionHeader
-          title="最近追加したグッズ"
-          actionLabel="管理へ"
-          onPress={() => router.push('/(tabs)/collection?mode=manage')}
-        />
-        {recentGoods.length ? (
-          <View style={styles.tileGrid}>
-            {recentGoods.map((item) => (
-              <View key={item.id} style={styles.tileItem}>
-                <HomeGoodsTile item={item} />
+            ) : (
+              <EmptyPanel icon="heart-outline" text="推し設定をすると、ここに推しのグッズが表示されます" />
+            )}
+          </>
+        );
+      case 'recent':
+        return (
+          <>
+            <SectionHeader
+              title="最近追加したグッズ"
+              actionLabel="管理へ"
+              onPress={() => router.push('/(tabs)/collection?mode=manage')}
+            />
+            {recentGoods.length ? (
+              <View style={styles.tileGrid}>
+                {recentGoods.map((item) => (
+                  <View key={item.id} style={styles.tileItem}>
+                    <HomeGoodsTile item={item} />
+                  </View>
+                ))}
               </View>
-            ))}
+            ) : (
+              <EmptyPanel icon="cube-outline" text="スキャンや手動登録をすると、最近追加したグッズが表示されます" />
+            )}
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.title, { color: colors.text }]}>ホーム</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>
+              {loading ? '読み込み中' : `${collectionGoods.length}種類 / ${totalQuantity}個を所持`}
+            </Text>
           </View>
-        ) : (
-          <EmptyPanel icon="cube-outline" text="スキャンや手動登録をすると、最近追加したグッズが表示されます" />
-        )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="マイページを開く"
+            onPress={() => router.push('/mypage')}
+            style={[styles.profileButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            <Ionicons color={colors.primary} name="person-circle-outline" size={24} />
+          </Pressable>
+        </View>
+
+        {settings.homeCards.map((cardId) => {
+          const card = renderHomeCard(cardId);
+          return card ? <View key={cardId}>{card}</View> : null;
+        })}
       </ScrollView>
     </SafeAreaView>
   );
