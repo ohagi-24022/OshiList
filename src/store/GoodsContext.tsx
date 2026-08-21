@@ -313,7 +313,7 @@ export function GoodsProvider({ children }: PropsWithChildren) {
         normalized.seriesName,
         normalized.characterName,
         normalized.variantName,
-        Math.max(0, input.quantity ?? 0),
+        normalized.quantity,
         normalized.imageUrl,
         normalized.isRandom ? 1 : 0,
         normalized.status,

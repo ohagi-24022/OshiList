@@ -95,8 +95,8 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-async def root() -> dict[str, str]:
+@app.get("/api/info")
+async def api_info() -> dict[str, str]:
     return {
         "ok": "true",
         "service": "OshiList Product Lookup",
