@@ -20,20 +20,19 @@ export default function TabEditorScreen() {
   const { colors } = useAppTheme();
   const { settings, updateSettings } = useAppSettings();
   const [draftTabs, setDraftTabs] = useState<UtilityTabId[]>(
-    settings.utilityTabs.filter((tab): tab is UtilityTabId => tabOptions.some((option) => option.id === tab)).slice(0, 2),
+    settings.utilityTabs.filter((tab): tab is UtilityTabId => tabOptions.some((option) => option.id === tab)).slice(0, 1),
   );
 
   const toggleTab = (id: UtilityTabId) => {
     setDraftTabs((current) => {
       if (current.includes(id)) return current.filter((value) => value !== id);
-      if (current.length >= 2) return [current[1], id];
-      return [...current, id];
+      return [id];
     });
   };
 
   const save = async () => {
-    if (draftTabs.length !== 2) {
-      Alert.alert('タブを2つ選択してください', 'ホーム・コレクション・登録以外に表示するタブを2つ選んでください。');
+    if (draftTabs.length !== 1) {
+      Alert.alert('タブを1つ選択してください', 'ホーム・コレクション・登録・設定以外に表示するタブを1つ選んでください。');
       return;
     }
     await updateSettings({ utilityTabs: draftTabs });
@@ -52,9 +51,9 @@ export default function TabEditorScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View>
-          <Text style={[styles.title, { color: colors.text }]}>表示するタブを2つ選択</Text>
+          <Text style={[styles.title, { color: colors.text }]}>表示するタブを1つ選択</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>
-            ホーム・コレクション・登録は固定です。設定はマイページから開けます。
+            ホーム・コレクション・登録・設定は固定です。選択中のタブをもう一度押すと解除できます。
           </Text>
         </View>
 
@@ -77,12 +76,12 @@ export default function TabEditorScreen() {
 
         <View style={[styles.fixedBox, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
           <Text style={[styles.fixedTitle, { color: colors.text }]}>固定タブ</Text>
-          <Text style={[styles.fixedText, { color: colors.muted }]}>ホーム / コレクション / 登録</Text>
+          <Text style={[styles.fixedText, { color: colors.muted }]}>ホーム / コレクション / 登録 / 設定</Text>
         </View>
       </ScrollView>
 
       <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-        <Pressable onPress={save} style={[styles.saveButton, { backgroundColor: draftTabs.length === 2 ? colors.primary : colors.border }]}>
+        <Pressable onPress={save} style={[styles.saveButton, { backgroundColor: draftTabs.length === 1 ? colors.primary : colors.border }]}>
           <Text style={styles.saveText}>このタブ構成にする</Text>
         </Pressable>
       </View>

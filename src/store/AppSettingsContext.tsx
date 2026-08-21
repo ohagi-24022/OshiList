@@ -19,7 +19,7 @@ const defaultSettings: AppSettings = {
   exchangeEnabled: false,
   groupRandomGoods: false,
   homeCards: ['oshi', 'lineup', 'unorganized', 'quickActions', 'exchange', 'schedule', 'favorites', 'oshiGoods', 'recent'],
-  utilityTabs: ['schedule', 'mypage'],
+  utilityTabs: ['schedule'],
 };
 const allowedUtilityTabs = new Set(['schedule', 'mypage', 'event', 'random']);
 const allowedHomeCards = new Set(defaultSettings.homeCards);
@@ -30,7 +30,7 @@ function readStoredSettings(stored: string): AppSettings {
   try {
     const parsed = JSON.parse(stored) as Partial<AppSettings>;
     const utilityTabs = Array.isArray(parsed.utilityTabs)
-      ? parsed.utilityTabs.filter((tab) => allowedUtilityTabs.has(tab)).slice(0, 2)
+      ? parsed.utilityTabs.filter((tab) => allowedUtilityTabs.has(tab)).slice(0, 1)
       : [];
     const homeCards = Array.isArray(parsed.homeCards)
       ? parsed.homeCards.filter((card) => allowedHomeCards.has(card))
@@ -39,7 +39,7 @@ function readStoredSettings(stored: string): AppSettings {
       ...defaultSettings,
       ...parsed,
       homeCards: homeCards.length ? homeCards : defaultSettings.homeCards,
-      utilityTabs: utilityTabs.length === 2 ? utilityTabs : defaultSettings.utilityTabs,
+      utilityTabs: utilityTabs.length === 1 ? utilityTabs : defaultSettings.utilityTabs,
     };
   } catch {
     return defaultSettings;
@@ -59,7 +59,7 @@ export function AppSettingsProvider({ children }: PropsWithChildren) {
 
   const updateSettings = async (patch: Partial<AppSettings>) => {
     const utilityTabs = patch.utilityTabs
-      ? patch.utilityTabs.filter((tab) => allowedUtilityTabs.has(tab)).slice(0, 2)
+      ? patch.utilityTabs.filter((tab) => allowedUtilityTabs.has(tab)).slice(0, 1)
       : settings.utilityTabs;
     const homeCards = patch.homeCards
       ? patch.homeCards.filter((card) => allowedHomeCards.has(card))
@@ -68,7 +68,7 @@ export function AppSettingsProvider({ children }: PropsWithChildren) {
       ...settings,
       ...patch,
       homeCards: homeCards.length ? homeCards : settings.homeCards,
-      utilityTabs: utilityTabs.length === 2 ? utilityTabs : settings.utilityTabs,
+      utilityTabs: utilityTabs.length === 1 ? utilityTabs : settings.utilityTabs,
     };
     setSettings(nextSettings);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings));
